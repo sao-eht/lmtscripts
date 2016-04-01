@@ -5,8 +5,8 @@ import netifaces as ni
 
 is_test = 0
 
-station_id_0  = 'Ln'  # n = R, IF cable labeled LCP, but accounting for reflections its RCP on the sky
-station_id_1  = 'Lm'  # m = L, IF cable labeled RCP, but accounting for reflections its LCP on the sky
+station_id_0  = 'Lm'  # n = R, IF cable labeled LCP, accounting for 5 reflections its RCP on the sky
+station_id_1  = 'Ln'  # m = L, IF cable labeled RCP, accounting for 5 reflections its LCP on the sky
 
 # set pol for both blocks
 # dual pol
