@@ -12,20 +12,22 @@ if len(sys.argv) == 2:
 else:
     rpt = 30
 
-counts = np.zeros((2,4,256))
-x = np.arange(-128, 128, 1)
-x0full = np.array([])
-x1full = np.array([])
+
 for r in range(rpt):
     # time.sleep(1)
     x0 = np.array(adc5g.get_snapshot(r2, 'r2dbe_snap_8bit_0_data'))
     x1 = np.array(adc5g.get_snapshot(r2, 'r2dbe_snap_8bit_1_data'))
     print x0.shape
     
-    x0full.append(x0,axis=0)
-    x1full.append(x1,axis=0)
+    if r > 0:
+        x0full = np.column_stack((x0full, x0))
+        x1full = np.column_stack((x1full, x1))
+    else:
+        x0full = x0
+        x1full = x1
+        
     print x0full.shape
 
 
-np.save('tmp/dataSamp' + sys.argv[2] + '.npy', x0full, x1full)
-
+np.save('dataSamp_' + sys.argv[2] + '_x0full_.npy', x0full)
+np.save('dataSamp_' + sys.argv[2] + '_x1full_.npy', x1full)
