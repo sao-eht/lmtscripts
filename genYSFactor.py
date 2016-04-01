@@ -101,7 +101,10 @@ plt.title('IF1 Ratio of Hot vs Cold Power')
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power Ratio')
 
-
+# if0_hot_filename = 'dataSamp_hotload_if0full.npy'
+tag = if0_hot_filename.split('_')[1] + '_' + if0_cold_filename.split('_')[1]
+plt.setp(plt.gcf(), figwidth=14, figheight=10)
+plt.savefig(tag + '.pdf')
 
 
 plt.interactive(True)
