@@ -7,11 +7,7 @@ import sys, time
 r2 = corr.katcp_wrapper.FpgaClient('r2dbe-1')
 r2.wait_connected()
 
-if len(sys.argv) == 2:
-    rpt = int(sys.argv[1])
-else:
-    rpt = 30
-
+rpt = int(sys.argv[1])
 
 for r in range(rpt):
     # time.sleep(1)
