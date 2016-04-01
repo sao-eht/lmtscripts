@@ -76,20 +76,35 @@ freq[-1] = -freq[-1]
 
 # plot the ratios 
 plt.figure(1)
-plt.subplot(211)
+
+plt.subplot(221)
+plt.plot(freq,if0_hot_power_average, label='if0 hot')
+plt.plot(freq,if0_cold_power_average, label='if0 cold')
+plt.legend(loc='best')
+
+plt.subplot(222)
 plt.plot(freq,if0_hot_power_average/if0_cold_power_average)
 plt.ylim(0, np.max(if0_hot_power_average/if0_cold_power_average)); 
 plt.title('IF0 Ratio of Hot vs Cold Power')
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power Ratio')
 
-plt.subplot(212)
+plt.subplot(223)
+plt.plot(freq,if1_hot_power_average, label ='if1 hot')
+plt.plot(freq,if1_cold_power_average, label='if1 cold')
+plt.legend(loc='best') 
+
+plt.subplot(224)
 plt.plot(freq,if1_hot_power_average/if1_cold_power_average)
 plt.ylim(0, np.max(if1_hot_power_average/if1_cold_power_average)); 
 plt.title('IF1 Ratio of Hot vs Cold Power')
 plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power Ratio')
 
+
+
+
+plt.interactive(True)
 plt.show()
 
 
