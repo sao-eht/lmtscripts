@@ -1,4 +1,5 @@
 # 1mm localization and total power in dreampy
+# 2015, 2016 LLB
 
 import numpy 
 import matplotlib
@@ -136,6 +137,7 @@ def mfilt(scans):
 	ys = []
 	ts = []
 	ss = []
+	fss = []
 	for i in sorted(scans):
 		scan = getscan(i)
 		aps.append(detrend(scan.a))
@@ -144,15 +146,17 @@ def mfilt(scans):
 		xs.append(scan.x)
 		ys.append(scan.y)
 		ss.append(scan.source)
+		fss.append(scan.fs)
+	s = ss[0]
+	fs = fss[0]
 	t0 = ts[0][0]
 	t1 = ts[-1][-1]
-	tnew = np.arange(t0, t1+0.2, 0.02)
+	tnew = np.arange(t0, t1+1./fs, 1./fs)
 	idx = np.zeros(len(tnew), dtype=np.bool)
 	x = np.zeros(len(tnew))
 	y = np.zeros(len(tnew))
 	a = np.zeros(len(tnew))
 	b = np.zeros(len(tnew))
-	s = ss[0]
 	for i in range(len(ts)):
 		istart = int(np.round((ts[i][0] - t0) * 50.))
 		idx[istart:istart+len(ts[i])] = True
@@ -162,7 +166,7 @@ def mfilt(scans):
 		b[istart:istart+len(bps[i])] = bps[i]
 	x[~idx] = np.inf
 	y[~idx] = np.inf
-	return Namespace(t=tnew, a=a, b=b, x=x, y=y, idx=idx, source=s)
+	return Namespace(t=tnew, a=a, b=b, x=x, y=y, idx=idx, source=s, fs=fs)
 
 def model(x, y, x0=0, y0=0, fwhm=11.):
 	fwhm = asec2rad(fwhm)
@@ -172,15 +176,16 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 	return m
 
 def fitmodel(z, win=50., res=2., fwhm=11.):
-	(p, f) = psd(z.b, NFFT=512, pad_to=4096, Fs=50.)
-	Fs = 50.
+	Fs = z.fs
+	tp = z.b
+	(p, f) = psd(tp, NFFT=512, pad_to=4096, Fs=Fs)
 	N = len(z.t)
 	np.log2(N)
 	pad = 2**int(np.ceil(np.log2(N)))
 	fac = np.zeros(pad)
 	mpad = np.zeros(pad)
 	bpad = np.zeros(pad)
-	bpad[:N] = z.b
+	bpad[:N] = tp
 	B = np.fft.rfft(bpad).conj()
 	fm = np.abs(np.fft.fftfreq(pad, d=1./Fs)[:1+pad/2])
 	fac = np.median(p) / interp1d(f, p)(fm)
@@ -207,7 +212,7 @@ def fitmodel(z, win=50., res=2., fwhm=11.):
 	plt.ylim(-win, win)
 	plt.xlim(-win, win)
 	plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
-	plt.text(-win, win, '[%.0f, %.0f]' % (xmax, ymax), va='top', ha='left', color='yellow')
+	plt.text(-win, win, '[%.1f, %.1f]' % (xmax, ymax), va='top', ha='left', color='yellow')
 
 def point(first, last=None, win=None, res=2., fwhm=11.):
 	if last is None:
