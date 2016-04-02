@@ -160,10 +160,10 @@ def mfilt(scans):
 	for i in range(len(ts)):
 		istart = int(np.round((ts[i][0] - t0) * 50.))
 		idx[istart:istart+len(ts[i])] = True
-		x[istart:istart+len(xs[i])] = xs[i]
-		y[istart:istart+len(ys[i])] = ys[i]
-		a[istart:istart+len(aps[i])] = aps[i]
-		b[istart:istart+len(bps[i])] = bps[i]
+		x[istart:istart+len(xs[i])] = xs[i][:len(x)-istart]
+		y[istart:istart+len(ys[i])] = ys[i][:len(y)-istart]
+		a[istart:istart+len(aps[i])] = aps[i][:len(a)-istart]
+		b[istart:istart+len(bps[i])] = bps[i][:len(b)-istart]
 	x[~idx] = np.inf
 	y[~idx] = np.inf
 	return Namespace(t=tnew, a=a, b=b, x=x, y=y, idx=idx, source=s, fs=fs)
