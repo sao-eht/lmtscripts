@@ -175,9 +175,9 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 	m = np.exp(-((x-x0)**2 + (y-y0)**2) / (2*sigma**2))
 	return m
 
-def fitmodel(z, win=50., res=2., fwhm=11.):
+def fitmodel(z, win=50., res=2., fwhm=11., channel='b'):
 	Fs = z.fs
-	tp = z.b
+	tp = z.__dict__[channel]
 	(p, f) = psd(tp, NFFT=512, pad_to=4096, Fs=Fs)
 	N = len(z.t)
 	np.log2(N)
@@ -197,10 +197,11 @@ def fitmodel(z, win=50., res=2., fwhm=11.):
 	yr = yy.ravel()
 	snrs = []
 	for (xtest, ytest) in zip(xr, yr):
-		mpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=11.)
+		mpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm)
 		M = np.fft.rfft(mpad)
 		# take the real part of sum = 0.5 * ifft[0]
-		snrs.append(np.sum((M * B * fac).real))
+		norm = np.sum(np.abs(M)**2 * fac)
+		snrs.append(np.sum((M * B * fac).real) / norm)
 	snr = np.array(snrs)
 	snr[snr < 0] = 0.
 	imax = np.argmax(snr)
@@ -213,15 +214,16 @@ def fitmodel(z, win=50., res=2., fwhm=11.):
 	plt.xlim(-win, win)
 	plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
 	plt.text(-win, win, '[%.1f, %.1f]' % (xmax, ymax), va='top', ha='left', color='yellow')
+	plt.text(win, win, '[%.2f mV]' % (1e3 * snrs[imax]), va='top', ha='right', color='yellow')
 
-def point(first, last=None, win=None, res=2., fwhm=11.):
+def point(first, last=None, win=None, res=2., fwhm=11., channel='b'):
 	if last is None:
 		last = first
 	scans = range(first, last+1)
 	z = mfilt(scans)
 	if win is None:
 		win = np.ceil(rad2asec(np.abs(np.min(z.x))))
-	fitmodel(z, win=win, res=res, fwhm=fwhm)
+	fitmodel(z, win=win, res=res, fwhm=fwhm, channel=channel)
 	if len(scans) == 1:
 		plt.title("%s: %d" % (z.source, scans[0]))
 	else:
