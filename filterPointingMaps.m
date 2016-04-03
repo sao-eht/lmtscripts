@@ -115,6 +115,9 @@ for i=1:nSamples
     end
 end
 
+% normalize to match the variance of the noise data
+estCovariance = estCovariance * (var(concatTimeSeries)/estCovariance(1,1)); 
+
 %% match filter
 
 for f=1:nFiles
