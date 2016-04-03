@@ -1,12 +1,12 @@
-function [corrValMapAvgCenter, probCorrValMapAvgCenter, origMapAvgCenter, xposCrop, yposCrop] = ...
+function [corrValMapAvgCenter_voltage, probCorrValMapAvgCenter, origMapAvgCenter, xposCrop, yposCrop] = ...
     filterPointingMaps( fnames, PLOT, nSweepPts, searchSigma)
 % filter a series of time series scans to identify the most likely position
-% of the source on the sky. 
-% 
+% of the source on the sky.
+%
 % INPUTS
 % fnames: a cell array of the names of the mat files containing the
 %   time-series scans of a source obtained using exportmat in loclib.py
-%   ex: fnames = {'scan_59811', 'scan_59812', 'scan_59813', 'scan_59814', 'scan_59815', 'scan_59816'}; 
+%   ex: fnames = {'scan_59811', 'scan_59812', 'scan_59813', 'scan_59814', 'scan_59815', 'scan_59816'};
 % PLOT: true if you want it to disply the plots, otherwise false. Default = true
 % nSweepts: The density of the grid that you search for the center of the
 %   source in each direction. Default = 60
@@ -19,33 +19,34 @@ function [corrValMapAvgCenter, probCorrValMapAvgCenter, origMapAvgCenter, xposCr
 % xposCrop: the positions of the sampling points in the maps in the x-direction
 % yposCrop: the positions of the sampling points in the maps in the y-direction
 
-%% set defaults if not provided 
+%% set defaults if not provided
+timeMultiplier = 50;
 
 if(nargin < 2)
-    PLOT = true; 
+    PLOT = true;
 end
 
-if(nargin < 3 ) 
-    nSweepPts = 60; 
+if(nargin < 3 )
+    nSweepPts = 60;
 end
 
-if(nargin < 4 ); 
+if(nargin < 4 );
     searchSigma = 5.3328e-5/2.355;
 end
 
 sourceAmp = 1;
-nFiles = length(fnames); 
+nFiles = length(fnames);
 
 
 % set the grid points for searching
-gridSelector = 1; 
+gridSelector = 1;
 load(fnames{gridSelector});
 minXSweep = min(x(:)) + 2e-5;
 minYSweep = min(y(:)) + 2e-5;
 maxXSweep = max(x(:)) - 2e-5;
 maxYSweep = max(y(:)) - 2e-5;
 xpos = linspace(minXSweep, maxXSweep, nSweepPts);
-ypos = linspace(minYSweep, maxYSweep, nSweepPts); 
+ypos = linspace(minYSweep, maxYSweep, nSweepPts);
 
 %% load data and estimate covariance from each time series
 
@@ -56,34 +57,16 @@ for f=1:nFiles
     
     % decide if you want to look at polarization a (a) or polarization b (b)
     data = b;
-
-    % linearly detrend the data
-    data = detrend(data(:));
-    nSamples = length(data);
     
-    % compute the crossCorrelation for estimating the covariance matrix
-    crossCorr = conv(data(:), flipud(data(:)));
-    
-    midIdx = length(crossCorr)/2 + 0.5;
-    crossCorrSide = crossCorr(midIdx:end);
-    
-    warning('didnt normalize covariance...maybe should do this');
-    %crossCorrNorm = conv(ones(size(data(:))), ones(size(data(:))));
-    %crossCorrSide = crossCorrSide./crossCorrNorm(midIdx:end);
-    
-    % fill in the covariance matrix for this data run
-    estCovarianceSingle = zeros(nSamples, nSamples);
-    for i=1:nSamples
-        for j=1:nSamples
-            estCovarianceSingle(i,j) = crossCorrSide(abs(i-j)+1);
-        end
+    if(f==1)
+        t0series = round(t0*timeMultiplier);
     end
     
-    % save the data, estimated covariance, and the length of the data
-    timeSeries{f} = data; 
-    estCov{f} = estCovarianceSingle;
-    datalen(f) = length(data);
+    newT = round((t+t0)*timeMultiplier) - t0series + 1;
+    timeSeries{f} = detrend(data(:)); 
+    concatTimeSeries(newT) = timeSeries{f};
     
+    datalen(f) = length(data);
     
     % get grid locations and grid the sweep values onto those locations
     [ygrid, xgrid]= ndgrid(ypos , xpos);
@@ -113,21 +96,24 @@ for f=1:nFiles
     
 end
 
-%% compute average covariance
+%% estimate the covariance from the time concatinated time series. 
 
-% each data stream is of different length, make a covariance matrix that is
-% the largest of the data streams
-maxDataLen = max(datalen); 
-estCovarianceAll = nan(maxDataLen, maxDataLen, length(fnames)); 
+% compute the crossCorrelation for estimating the covariance matrix
+crossCorr = conv(concatTimeSeries(:), flipud(concatTimeSeries(:)));
 
-% place the indiviually estimated covariance into the matrix
-for f=1:nFiles
-    estCovarianceAll(1:datalen(f),1:datalen(f),f) = estCov{f}; 
+midIdx = length(crossCorr)/2 + 0.5;
+crossCorrSide = crossCorr(midIdx:end);
+warning('didnt normalize covariance...maybe should do this');
+
+
+% fill in the covariance matrix for this data run
+nSamples = max(datalen); 
+estCovariance = zeros(nSamples, nSamples);
+for i=1:nSamples
+    for j=1:nSamples
+        estCovariance(i,j) = crossCorrSide(abs(i-j)+1);
+    end
 end
-
-% average the covariance matrices 
-estCovariance = nanmean(estCovarianceAll, 3); 
-
 
 %% match filter
 
@@ -135,7 +121,8 @@ for f=1:nFiles
     
     % load the file
     load(fnames{f});
-    corrVals = nan(nSweepPts, nSweepPts);
+    corrVals_voltage = nan(nSweepPts, nSweepPts);
+    corrVals_snr = nan(nSweepPts, nSweepPts);
     
     % invert the inverse covariance
     invEstCovariance = inv(estCovariance(1:datalen(f), 1:datalen(f)));
@@ -152,37 +139,42 @@ for f=1:nFiles
             h =  invEstCovariance * propReal;
             
             % normalization
-            h = h * (1/(propReal'*invEstCovariance*propReal)); 
+            normConst = (1/(propReal'*invEstCovariance*propReal)); 
             
             % evaluate the match filter
-            corrVals(iCount, jCount) = sum(timeSeries{f}(:).*h(:));
+            response = sum(timeSeries{f}(:).*h(:)); 
+            corrVals_voltage(iCount, jCount) = response * normConst;
+            corrVals_snr(iCount, jCount) = response * sqrt(normConst);
             
             jCount = jCount + 1;
         end
         
         %plot the filter response
-        figure(f); 
-        subplot(122); imagesc(corrVals,'XData',xpos,'YData',ypos); 
-        title('Filtered Map'); xlabel('radians'); ylabel('radians'); colorbar; drawnow; 
+        %figure(f);
+        %subplot(122); imagesc(corrVals_snr,'XData',xpos,'YData',ypos);
+        %title('Filtered SNR Map'); xlabel('radians'); ylabel('radians'); colorbar; drawnow;
         
         iCount = iCount + 1;
         
         % save the filtered map
-        corrValMap(:,:,f) = corrVals; 
+        corrValMap_voltage(:,:,f) = corrVals_voltage;
+        corrValMap_snr(:,:,f) = corrVals_snr;
     end
+    
+    %plot the filter response
+    figure(f);
+    subplot(122); imagesc(corrVals_snr,'XData',xpos,'YData',ypos);
+    title('Filtered SNR Map'); xlabel('radians'); ylabel('radians'); colorbar; drawnow;
+
     
 end
 
 %% prepare and return results
 
-% remove negative snr's 
-corrValMapZeroed = corrValMap;
-corrValMapZeroed(corrValMap<0) = 0;
-
 % average the maps
 origMapAvg = nanmean(origMap, 3);
-corrValMapAvg = nanmean(corrValMapZeroed, 3);
-corrValMapSqAvg = nanmean(corrValMapZeroed.^2, 3);
+corrValMapAvg_voltage = nanmean(corrValMap_voltage, 3);
+corrValMapAvg_snr = nanmean(corrValMap_snr, 3);
 
 % figure out the crops for removing 3 sigma
 deltaX = (maxXSweep - minXSweep)./nSweepPts;
@@ -194,8 +186,8 @@ nPixelCropY  = ceil( (3*searchSigma)./deltaY ) + 1;
 xposCrop = xpos(nPixelCropX:end-nPixelCropX);
 yposCrop = ypos(nPixelCropY:end-nPixelCropY);
 origMapAvgCenter = origMapAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
-corrValMapAvgCenter = corrValMapAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
-probCorrValMapAvgCenter = exp(0.5*corrValMapSqAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX));
+corrValMapAvgCenter_voltage = corrValMapAvg_voltage(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
+corrValMapAvgCenter_snr = corrValMapAvg_snr(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
 
 % plot results
 if PLOT
@@ -211,14 +203,13 @@ if PLOT
     title('Averaged Original Maps'); xlabel('radians'); ylabel('radians'); axis square;
     
     % display average filtered map
-    subplot(143); imagesc(corrValMapAvgCenter,'XData',xposCrop,'YData',yposCrop);
-    title('Averaged Filtered Maps');  xlabel('radians'); ylabel('radians'); axis square;
+    subplot(143); imagesc(corrValMapAvgCenter_voltage,'XData',xposCrop,'YData',yposCrop);
+    title('Estimated Voltage of Source');  xlabel('radians'); ylabel('radians'); axis square;
     
     % display average map corresponding to probablity
-    subplot(144); imagesc(probCorrValMapAvgCenter,'XData',xposCrop,'YData',yposCrop);
-    title('Probablity Averaged Filtered Maps'); xlabel('radians'); ylabel('radians'); axis square; 
+    subplot(144); imagesc(corrValMapAvgCenter_snr.^2,'XData',xposCrop,'YData',yposCrop);
+    title('Log Likelihood of Location'); xlabel('radians'); ylabel('radians'); axis square; 
 end
-
 
 end
 
