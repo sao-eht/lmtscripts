@@ -178,33 +178,36 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 def fitmodel(z, win=50., res=2., fwhm=11., channel='b'):
 	Fs = z.fs
 	tp = z.__dict__[channel]
+	# 512 is balance between freq resolution and averaging, good for 50 Hz
 	(p, f) = psd(tp, NFFT=512, pad_to=4096, Fs=Fs)
-	N = len(z.t)
-	np.log2(N)
-	pad = 2**int(np.ceil(np.log2(N)))
+	N = len(z.t) # original sequence length
+	pad = 2**int(np.ceil(np.log2(N))) # pad length for efficient FFTs
 	fac = np.zeros(pad)
 	mpad = np.zeros(pad)
 	bpad = np.zeros(pad)
 	bpad[:N] = tp
 	B = np.fft.rfft(bpad).conj()
 	fm = np.abs(np.fft.fftfreq(pad, d=1./Fs)[:1+pad/2])
-	fac = np.median(p) / interp1d(f, p)(fm)
-	fac[fm < 0.1] = 0. # turn off low freqs below 0.1 Hz
+	fac = np.median(p) / interp1d(f, p)(fm) # 1/PSD for matched filter (double whiten)
+	fac[fm < 0.1] = 0. # turn off low freqs below 0.1 Hz - just a guess
+	sqfac = np.sqrt(fac) # single whitening factor
 	x = asec2rad(np.arange(-win, win+res, res))
 	y = asec2rad(np.arange(-win, win+res, res))
-	(xx, yy) = np.meshgrid(x, y)
+	(xx, yy) = np.meshgrid(x, y) # search grid
 	xr = xx.ravel()
 	yr = yy.ravel()
-	snrs = []
+	snrs = [] # signal-to-noise ratios
+	norms = [] # sqrt of whitened matched filter signal power
 	for (xtest, ytest) in zip(xr, yr):
-		mpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm)
+		mpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm) # model signal
 		M = np.fft.rfft(mpad)
 		# take the real part of sum = 0.5 * ifft[0]
-		norm = np.sum(np.abs(M)**2 * fac)
+		norm = np.sqrt(np.sum(np.abs(M)**2 * fac))
+		norms.append(norm)
 		snrs.append(np.sum((M * B * fac).real) / norm)
 	snr = np.array(snrs)
 	snr[snr < 0] = 0.
-	imax = np.argmax(snr)
+	imax = np.argmax(snr) # maximum snr location
 	(xmax, ymax) = (rad2asec(xr[imax]), rad2asec(yr[imax]))
 	snr = snr.reshape(xx.shape)
 	plt.clf()
@@ -214,7 +217,7 @@ def fitmodel(z, win=50., res=2., fwhm=11., channel='b'):
 	plt.xlim(-win, win)
 	plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
 	plt.text(-win, win, '[%.1f, %.1f]' % (xmax, ymax), va='top', ha='left', color='yellow')
-	plt.text(win, win, '[%.2f mV]' % (1e3 * snrs[imax]), va='top', ha='right', color='yellow')
+	plt.text(win, win, '[%.2f mV]' % (1e3 * snrs[imax] / norms[imax]), va='top', ha='right', color='yellow')
 
 def point(first, last=None, win=None, res=2., fwhm=11., channel='b'):
 	if last is None:
@@ -223,6 +226,7 @@ def point(first, last=None, win=None, res=2., fwhm=11., channel='b'):
 	z = mfilt(scans)
 	if win is None:
 		win = np.ceil(rad2asec(np.abs(np.min(z.x))))
+		print win
 	fitmodel(z, win=win, res=res, fwhm=fwhm, channel=channel)
 	if len(scans) == 1:
 		plt.title("%s: %d" % (z.source, scans[0]))
