@@ -21,15 +21,15 @@ function [corrValMapAvgCenter, probCorrValMapAvgCenter, origMapAvgCenter, xposCr
 
 %% set defaults if not provided 
 
-if(nargsin < 2)
+if(nargin < 2)
     PLOT = true; 
 end
 
-if(nargsin < 3 ) 
+if(nargin < 3 ) 
     nSweepPts = 60; 
 end
 
-if(nargsin < 4 ); 
+if(nargin < 4 ); 
     searchSigma = 5.3328e-5/2.355;
 end
 
@@ -195,7 +195,7 @@ xposCrop = xpos(nPixelCropX:end-nPixelCropX);
 yposCrop = ypos(nPixelCropY:end-nPixelCropY);
 origMapAvgCenter = origMapAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
 corrValMapAvgCenter = corrValMapAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
-probCorrValMapAvgCenter = exp(0.5*corrValMapSqAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX);
+probCorrValMapAvgCenter = exp(0.5*corrValMapSqAvg(nPixelCropY:end-nPixelCropY,nPixelCropX:end-nPixelCropX));
 
 % plot results
 if PLOT
