@@ -4,11 +4,8 @@ import numpy as np
 import scipy.optimize
 import sys, time
 
-
-#if0_hot = np.load('dataSamp_hotload_if0full.npy')
-#if1_hot = np.load('dataSamp_hotload_if1full.npy')
-#if0_cold = np.load('dataSamp_coldload_if0full.npy')
-#if1_cold = np.load('dataSamp_coldload_if1full.npy')
+# generate the YS-factors using hot and cold loads and display along with their power specturm
+# Usage: python ./genYSFactor.py <filename of i0 hot load> <filename of i1 hot load> <filename of i0 cold load> <filename of i1 cold load> <1 to plot in linear scale, 0 to plot in dB scale> <length of the snippet to analzye> <sampling rate>
 
 # read in the filenames
 if len(sys.argv) < 5:
