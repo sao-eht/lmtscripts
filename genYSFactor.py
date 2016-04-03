@@ -22,17 +22,23 @@ else:
     if0_cold_filename = sys.argv[3]
     if1_cold_filename = sys.argv[4]
  
-# read in the length of the snippets we want to analyze   
+# read in if you should plot the power spectrum in linear or db scale
 if len(sys.argv) < 6:
+    linear = 1; 
+else:
+    linear = sys.argv[5]
+
+# read in the length of the snippets we want to analyze   
+if len(sys.argv) < 7:
     snippetLen = 512
 else:
-    snippetLen = sys.argv[5]
+    snippetLen = sys.argv[6]
 
 # read in sampling rate
-if len(sys.argv) < 7:
+if len(sys.argv) < 8:
     samp_rate = 4096e6
 else:
-    snippetLen = sys.argv[6] 
+    snippetLen = sys.argv[7] 
 
 
 # load the data
@@ -77,9 +83,18 @@ freq[-1] = -freq[-1]
 # plot the ratios 
 plt.figure(1)
 
+
+
 plt.subplot(221)
-plt.plot(freq,if0_hot_power_average, label='if0 hot')
-plt.plot(freq,if0_cold_power_average, label='if0 cold')
+if linear==1:
+    plt.plot(freq,if0_hot_power_average, label='if0 hot')
+    plt.plot(freq,if0_cold_power_average, label='if0 cold')
+    plt.ylabel('Power')
+else: 
+    plt.plot(freq, 10*np.log10(if0_hot_power_average), label='if0 hot')
+    plt.plot(freq, 10*np.log10(if0_cold_power_average), label='if0 cold')
+    plt.ylabel('Power (dB)')
+plt.xlabel('Frequency (Hz)')
 plt.legend(loc='best')
 
 plt.subplot(222)
@@ -90,9 +105,16 @@ plt.xlabel('Frequency (Hz)')
 plt.ylabel('Power Ratio')
 
 plt.subplot(223)
-plt.plot(freq,if1_hot_power_average, label ='if1 hot')
-plt.plot(freq,if1_cold_power_average, label='if1 cold')
-plt.legend(loc='best') 
+if linear==1:
+    plt.plot(freq,if1_hot_power_average, label='if1 hot')
+    plt.plot(freq,if1_cold_power_average, label='if1 cold')
+    plt.ylabel('Power')
+else: 
+    plt.plot(freq, 10*np.log10(if1_hot_power_average), label='if1 hot')
+    plt.plot(freq, 10*np.log10(if1_cold_power_average), label='if1 cold')
+    plt.ylabel('Power (dB)')
+plt.xlabel('Frequency (Hz)')
+plt.legend(loc='best')
 
 plt.subplot(224)
 plt.plot(freq,if1_hot_power_average/if1_cold_power_average)
