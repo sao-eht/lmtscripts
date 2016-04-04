@@ -19,6 +19,8 @@ Lm LSB LSB LCP Ln LSB LSB RCP | 4-6 interim config
 Lm LSB USB LCP Ln LSB USB RCP | 6-8 interim config
 Lm USB LSB LCP Ln LSB LSB RCP | 4-6 ALMA config
 Lm USB USB LCP Ln LSB USB RCP | 6-8 ALMA config
+Az USB LSB LCP Ay USB LSB RCP | 4-6 ALMA config
+Az USB USB LCP Ay USB USB RCP | 6-8 ALMA config
 """
 
 choices = configs.strip().split('\n')
