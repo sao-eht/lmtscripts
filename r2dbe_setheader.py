@@ -1,3 +1,4 @@
+import sys
 import adc5g, corr
 from time import sleep
 from datetime import datetime, time, timedelta
