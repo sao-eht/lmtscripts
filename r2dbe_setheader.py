@@ -23,10 +23,13 @@ Lm USB USB LCP Ln LSB USB RCP | 6-8 ALMA config
 choices = configs.strip().split('\n')
 
 print "Please choose a configuration [1-%d]:" % (len(choices))
+print "%3d) abort!" % (0,)
 for (i, line) in enumerate(choices):
     print "%3d) %s" % (i+1, line)
 
 i = raw_input("-> ")
+if i == "0":
+    sys.exit(0)
 choice = choices[int(i)-1]
 
 par = choice.split('|')[0].strip().split()
