@@ -9,6 +9,7 @@ import numpy as np
 import adc5g
 import time
 import subprocess
+from datetime import datetime, timedelta
 from pkg_resources import parse_version
 
 def get_switch_ip():
@@ -28,6 +29,28 @@ x0 = np.array(adc5g.get_snapshot(roach2, 'r2dbe_snap_8bit_0_data'))
 x1 = np.array(adc5g.get_snapshot(roach2, 'r2dbe_snap_8bit_1_data'))
 th0 = roach2.read_int('r2dbe_quantize_0_thresh')
 th1 = roach2.read_int('r2dbe_quantize_1_thresh')
+
+class R2EpochIsCorrect(unittest.TestCase):
+    def test(self):
+        utcnow = datetime.utcnow()
+        epoch = 2*(utcnow.year - 2000) + (utcnow.month > 6)
+        self.assertEqual(epoch, roach2.read_int('r2dbe_vdif_0_hdr_w1_ref_ep'))
+        self.assertEqual(epoch, roach2.read_int('r2dbe_vdif_1_hdr_w1_ref_ep'))
+
+class R2SecondsAreCorrect(unittest.TestCase):
+    def test(self):
+        utcnow = datetime.utcnow()
+        wait = (1500000 - utcnow.microsecond) % 1e6 # get to 0.5s boundary
+        time.sleep(wait / 1e6)
+        utcnow = datetime.utcnow()
+        refdate = datetime(utcnow.year, 1+6*(utcnow.month > 6), 1)
+        dt = utcnow - refdate
+        totalsec = dt.days * 86400 + dt.seconds
+        gpscnt = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
+        r2sec0 = gpscnt + roach2.read_int('r2dbe_vdif_0_hdr_w0_sec_ref_ep')
+        r2sec1 = gpscnt + roach2.read_int('r2dbe_vdif_1_hdr_w0_sec_ref_ep')
+        self.assertEqual(totalsec, r2sec0)
+        self.assertEqual(totalsec, r2sec1)
 
 class R2BitcodeIsUpToDate(unittest.TestCase):
 	def test(self):
