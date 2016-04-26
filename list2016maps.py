@@ -12,15 +12,17 @@ for fname in sorted(files):
 		nc = netcdf.netcdf_file(fname)
 		v = nc.variables
 		pgm = ''.join(v['Header.Dcs.ObsPgm'].data).strip()
-		onum = v['Header.Dcs.ObsNum'].data
-		time = v['Data.Sky.Time'].data
-		duration = time[-1] - time[0]
 		if pgm == 'Map':
 			rate = v['Header.Map.ScanRate'].data * (180/np.pi) * (3600.)
 			source = ''.join(v['Header.Source.SourceName'].data).strip()
 		elif pgm == 'On':
 			rate = 0
 			source = 'On'
+		else:
+			continue
+		onum = v['Header.Dcs.ObsNum'].data
+		time = v['Data.Sky.Time'].data
+		duration = time[-1] - time[0]
 		date = str(v['Header.TimePlace.UTDate'].data)
 		year = datetime.strptime(date[:4], "%Y")
 		fyear = float(date[4:])
