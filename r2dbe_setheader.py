@@ -51,6 +51,9 @@ print "setting IF parameters:"
 print "  IF0: %s (%s) - Sky:%s, BDC:%s" % (par[0], par[3], par[1], par[2])
 print "  IF1: %s (%s) - Sky:%s, BDC:%s" % (par[4], par[7], par[5], par[6])
 
+# removing all the clock settings because it may be impossible to calculate the appropriate offset
+
+"""
 ref_ep_num = 32 #2014 part 2 = 29
 ref_ep_date = datetime(2016,1,1,0,0,0) # date of start of epoch July 1 2014
 utcnow = datetime.utcnow()
@@ -69,6 +72,7 @@ roach2.write_int('r2dbe_vdif_1_hdr_w0_sec_ref_ep',sec_ref_ep)
 
 roach2.write_int('r2dbe_vdif_0_hdr_w1_ref_ep',ref_ep_num)
 roach2.write_int('r2dbe_vdif_1_hdr_w1_ref_ep',ref_ep_num)
+"""
 
 ############
 #   W3

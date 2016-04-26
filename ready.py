@@ -37,35 +37,40 @@ class R2EpochIsCorrect(unittest.TestCase):
         self.assertEqual(epoch, roach2.read_int('r2dbe_vdif_0_hdr_w1_ref_ep'))
         self.assertEqual(epoch, roach2.read_int('r2dbe_vdif_1_hdr_w1_ref_ep'))
 
-class R2SecondsAreCorrect(unittest.TestCase):
-    def test(self):
-        utcnow = datetime.utcnow()
-        wait = (1500000 - utcnow.microsecond) % 1e6 # get to 0.5s boundary
-        time.sleep(wait / 1e6)
-        utcnow = datetime.utcnow()
-        refdate = datetime(utcnow.year, 1+6*(utcnow.month > 6), 1)
-        dt = utcnow - refdate
-        totalsec = dt.days * 86400 + dt.seconds
-        gpscnt = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
-        r2sec0 = gpscnt + roach2.read_int('r2dbe_vdif_0_hdr_w0_sec_ref_ep')
-        r2sec1 = gpscnt + roach2.read_int('r2dbe_vdif_1_hdr_w0_sec_ref_ep')
-        self.assertEqual(totalsec, r2sec0)
-        self.assertEqual(totalsec, r2sec1)
+# class R2SecondsAreCorrect(unittest.TestCase):
+#     def test(self):
+#         utcnow = datetime.utcnow()
+#         wait = (1500000 - utcnow.microsecond) % 1e6 # get to 0.5s boundary
+#         time.sleep(wait / 1e6)
+#         utcnow = datetime.utcnow()
+#         refdate = datetime(utcnow.year, 1+6*(utcnow.month > 6), 1)
+#         # print refdate
+#         dt = utcnow - refdate
+#         totalsec = dt.days * 86400 + dt.seconds
+#         gpscnt = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
+#         r2sec0 = gpscnt + roach2.read_int('r2dbe_vdif_0_hdr_w0_sec_ref_ep')
+#         r2sec1 = gpscnt + roach2.read_int('r2dbe_vdif_1_hdr_w0_sec_ref_ep')
+#         # print r2sec0 - totalsec
+#         self.assertEqual(totalsec, r2sec0)
+#         self.assertEqual(totalsec, r2sec1)
 
 class R2BitcodeIsUpToDate(unittest.TestCase):
-	def test(self):
-		import hashlib
-		path = '/srv/roach2_boot/current/boffiles/r2dbe_rev2.bof'
-		md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
-		self.assertEqual(md5, r2_bitcode_md5sum)
+    def test(self):
+        import hashlib
+        path = '/srv/roach2_boot/current/boffiles/r2dbe_rev2.bof'
+        md5 = hashlib.md5(open(path, 'rb').read()).hexdigest()
+        self.assertEqual(md5, r2_bitcode_md5sum)
 
 class R2IsConnected(unittest.TestCase):
-	def test(self):
-		self.assertTrue(roach2.is_connected())
+    def test(self):
+        self.assertTrue(roach2.is_connected())
 
-class R2PPSIsNonzero(unittest.TestCase):
-	def test(self):
-		self.assertTrue(roach2.read_uint('r2dbe_onepps_gps_pps_cnt') > 0)
+class R2GpsIsIncrementing(unittest.TestCase):
+    def test(self):
+        gpspps1 = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
+        time.sleep(1.5)
+        gpspps2 = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
+        self.assertTrue(gpspps2 > gpspps1)
 
 class R2ClockIs256MHz(unittest.TestCase):
     def test(self):
@@ -77,26 +82,26 @@ class R2ClockIs256MHz(unittest.TestCase):
         self.assertTrue(abs(clk - 256.) < 2.0)
 
 class IFPowerIsGood(unittest.TestCase):
-	def test(self):
-		self.assertTrue(np.abs(np.std(x0) - 30.) <= if_power_tol and
-				np.abs(np.std(x1) - 30.) <= if_power_tol)
+    def test(self):
+        self.assertTrue(np.abs(np.std(x0) - 30.) <= if_power_tol and
+                np.abs(np.std(x1) - 30.) <= if_power_tol)
 
 class IFThresholdIsGood(unittest.TestCase):
-	def test(self):
-		self.assertTrue(np.abs(np.std(x0) - th0) <= r2_threshold_tol and
-				np.abs(np.std(x1) - th1) <= r2_threshold_tol)
+    def test(self):
+        self.assertTrue(np.abs(np.std(x0) - th0) <= r2_threshold_tol and
+                np.abs(np.std(x1) - th1) <= r2_threshold_tol)
 
 class SwitchIsSetToIF(unittest.TestCase):
-	def test(self):
-		connection = httplib.HTTPConnection(switch_ip,80)
-		connection.request("GET","/SWPORT?")
-		response = connection.getresponse()
-		data = response.read()
-		self.assertEqual(int(data), 0)
+    def test(self):
+        connection = httplib.HTTPConnection(switch_ip,80)
+        connection.request("GET","/SWPORT?")
+        response = connection.getresponse()
+        data = response.read()
+        self.assertEqual(int(data), 0)
 
 class Mark6SoftwareIsCurrent(unittest.TestCase):
-	def test(self):
-		self.assertTrue(os.path.exists('/usr/local/src/Mark6_%s' % m6_software_version))
+    def test(self):
+        self.assertTrue(os.path.exists('/usr/local/src/Mark6_%s' % m6_software_version))
 
 class TimezoneIsUTC(unittest.TestCase):
     def test(self):
@@ -115,4 +120,4 @@ class dplaneIsRunning(unittest.TestCase):
         self.assertTrue(out != "")
         
 if __name__ == '__main__':
-	unittest.main()
+    unittest.main()
