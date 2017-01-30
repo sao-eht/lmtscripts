@@ -182,17 +182,19 @@ def fitmodel(z, win=50., res=2., fwhm=11., channel='b'):
 	Fs = z.fs
 	tp = z.__dict__[channel]
 	# 512 is balance between freq resolution and averaging, good for 50 Hz
-	(p, f) = psd(tp, NFFT=512, pad_to=4096, Fs=Fs) # unit variance -> PSD = 1.
-	p = p / z.fillfrac # account for zeros in stiched timeseries
+	(p, f) = psd(tp, NFFT=1024, pad_to=4096, Fs=Fs) # unit variance -> PSD = 1 / Hz
+	if 'fillfrac' in z:
+		p = p / z.fillfrac # account for zeros in stiched timeseries (otherwise 1)
 	N = len(z.t) # original sequence length
 	pad = 2**int(np.ceil(np.log2(N))) # pad length for efficient FFTs
 	fac = np.zeros(pad)
 	mpad = np.zeros(pad)
 	bpad = np.zeros(pad)
+	ipad = np.zeros(pad).astype(bool)
 	bpad[:N] = tp
 	B = np.fft.rfft(bpad).conj() # N factor goes into fft, ifft = 1/N * ..
 	fm = np.abs(np.fft.fftfreq(pad, d=1./Fs)[:1+pad/2])
-	fac = 1. / interp1d(f, p)(fm) # 1/PSD for matched filter (double whiten)
+	fac = 1. / interp1d(f, p)(fm) / (Fs/2.) # 1/PSD for matched filter (double whiten), Fs/2 accounts for PSD normalization
 	fac[fm < 0.1] = 0. # turn off low freqs below 0.1 Hz - just a guess
 	x = asec2rad(np.arange(-win, win+res, res))
 	y = asec2rad(np.arange(-win, win+res, res))
@@ -213,15 +215,26 @@ def fitmodel(z, win=50., res=2., fwhm=11., channel='b'):
 	imax = np.argmax(snr) # maximum snr location
 	(xmax, ymax) = (rad2asec(xr[imax]), rad2asec(yr[imax]))
 	snr = snr.reshape(xx.shape)
+	isnr = np.argsort(snr.ravel())[::-1] # reverse sort high to low
+	prob = np.exp((snr.ravel()/np.sqrt(pad/2.))**2/2.)
+	pcum = np.zeros_like(prob)
+	pcum[isnr] = np.cumsum(prob[isnr])
+	pcum = pcum.reshape(xx.shape) / np.sum(prob)
+	xxa = xx * rad2asec(1.)
+	yya = yy * rad2asec(1.)
 	plt.clf()
-	dw = asec2rad(res)
-	plt.imshow(snr**2, extent=map(rad2asec, (x[0]-dw/2., x[-1]+dw/2., y[0]-dw/2., y[-1]+dw/2.)), interpolation='nearest', origin='lower')
+	h1 = plt.contourf(xxa, yya, pcum, scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), cmap=plt.cm.get_cmap("Blues"))
+	plt.gca().set_axis_bgcolor('black')
+	# dw = asec2rad(res)
+	# plt.imshow(snr**2, extent=map(rad2asec, (x[0]-dw/2., x[-1]+dw/2., y[0]-dw/2., y[-1]+dw/2.)), interpolation='nearest', origin='lower')
 	plt.ylim(-win, win)
 	plt.xlim(-win, win)
 	plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
 	plt.text(-win, win, '[%.1f, %.1f]' % (xmax, ymax), va='top', ha='left', color='yellow')
 	plt.text(win, win, '[%.2f mV]' % (1e3 * snrs[imax] / norms[imax]), va='top', ha='right', color='yellow')
 	print snrs[imax], norms[imax], pad
+	return Namespace(xx=xx, yy=yy, snr=snr/np.sqrt(pad/2.), v=snr/np.array(norms).reshape(xx.shape))
+
 
 # (0, 6, 14, 14, 0)
 def fitsearch(z, x0=0, y0=0, s10=20., s20=20., th0=0, channel='b'):
@@ -320,4 +333,4 @@ def ezmodel(x, y, x0, y0, sigma1, sigma2, angle):
 	return model2D(x, y, x0, y0, cov[0,0], cov[1,1], cov[1,0])
 
 # def model2dplusring(x, y, x0, y0, cov11, cov22, cov12, ringsize, ringangle, ringrelativeAmplitude, radialprofile):
-    
+	
