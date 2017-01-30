@@ -1,9 +1,12 @@
+# Mirror data from source MSN's to destination MSN on same Mark6 unit
+# Jan 29, 2017 Lindy Blackburn
+
 import argparse
 import subprocess
 import stat
 import os
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="mount drives and create commands to copy data from source MSN(s) to destination MSN.")
 parser.add_argument('source', metavar='source', type=str, nargs='+')
 parser.add_argument('destination', metavar='destination', type=str)
 args = parser.parse_args()

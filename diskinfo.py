@@ -1,3 +1,6 @@
+# Print SAS disk info on Mark6
+# Jan 29, 2017 Lindy Blackburn
+
 import subprocess
 import stat
 import os
