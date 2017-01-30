@@ -68,6 +68,19 @@ root@Mark6-4047:/home/oper/lindy# python diskinfo.py
 
 manually mount disks on Mark6 unit (bypass cplane)
 
+#### mirror.py
+
+mirror.py archives vdif files from source modules onto a backup module on the
+same Mark6. Files are copied disk-to-disk to a subdirectory based on the source
+minodule MSN.
+
+```
+# copy data from 71, 72, 73 into backup directories on 143
+python mirror.py BHC%0071 BHC%0072 BHC%0073 BHC%0143 > go.sh
+python diskinfo.py # sanity check disk mounting and copy script
+. go.sh # run copy script
+```
+
 #### og.py
 
 use noise to train and set ADC core offset and gain
