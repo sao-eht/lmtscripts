@@ -65,12 +65,15 @@ class R2IsConnected(unittest.TestCase):
     def test(self):
         self.assertTrue(roach2.is_connected())
 
-class R2GpsIsIncrementing(unittest.TestCase):
+class R2GpsIncrementedBy1(unittest.TestCase):
     def test(self):
+        utcnow = datetime.utcnow()
+        wait = (1500000 - utcnow.microsecond) % 1e6 # get to 0.5s boundary
+        time.sleep(wait / 1e6)
         gpspps1 = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
-        time.sleep(1.5)
+        time.sleep(1.0)
         gpspps2 = roach2.read_uint('r2dbe_onepps_gps_pps_cnt')
-        self.assertTrue(gpspps2 > gpspps1)
+        self.assertTrue(gpspps2 == gpspps1 + 1)
 
 class R2ClockIs256MHz(unittest.TestCase):
     def test(self):
