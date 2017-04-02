@@ -26,6 +26,7 @@ def rad2asec(rad):
 
 
 
+
 ################### EXTRACT INFORMATION ###################
 
 
@@ -100,6 +101,7 @@ def mfilt_katie(scans):
     ts = []
     ss = []
     fss = []
+    zs = []
     ntaper = 100
     for i in sorted(scans):
         keep = rawopen_katie(i)
@@ -111,6 +113,10 @@ def mfilt_katie(scans):
         ys.append(scan.y)
         ss.append(scan.source)
         fss.append(scan.fs)
+        
+        print('warning! check this is okay')
+        zs.append(keep.nc.variables['Header.M2.ZAct'].data)
+        
     s = ss[0]
     fs = fss[0]
     t0 = ts[0][0]
@@ -131,7 +137,7 @@ def mfilt_katie(scans):
     x[~idx] = np.inf
     y[~idx] = np.inf
     fillfrac = float(np.sum(idx)-ntaper*len(scans)) / len(tnew)
-    return Namespace(t=tnew, a=a, b=b, x=x, y=y, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
+    return Namespace(t=tnew, a=a, b=b, x=x, y=y, z=zs, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
 
  
 
@@ -188,7 +194,26 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
 
 
     
-def focusing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def focusing_2_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+
+    
+    if last is None:
+        last = first       
+    vmeans = []
+    vstds = []
+    z_position = []
+
+    for scan in range(first, last+1):
+        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZAct'].data)
+
+    out = pointing_lmt2017(first, last=last, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
+    (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
+    
+    
+        
+        
+def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+
     
     if last is None:
         last = first       
@@ -201,35 +226,210 @@ def focusing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
         z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZAct'].data)
 
         out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
-        (xxa, yya, snr, v, prob, pcum) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
-     
-        i3s = (pcum.ravel() < 0.99730020393673979)
-        v3s = v.ravel()[i3s]
-        p3s = prob.ravel()[i3s]
-        vmean = np.sum(v3s * p3s) / np.sum(p3s) # expectation value of v3s
-        v3s2 = (v3s - vmean)**2
-        vstd = np.sqrt(np.sum(v3s2 * p3s) / np.sum(p3s)) # std
+        (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
+
+# KATIE: DOESN'T THIS ONLY WORK IF YOU ONLY HAVE 1 PEAK???
+
+        # get the indices of the points on the map within 3 sigma and extract those voltages and probablities
+        indices_3sigma = (cumulative_prob.ravel() < 0.99730020393673979)
+        voltages_3sigma = v.ravel()[indices_3sigma]
+        prob_3sigma = prob.ravel()[indices_3sigma]
+
+        # compute the expected value of the source voltage within 3 sigma
+        sourcevoltage_expvalue = np.sum(voltages_3sigma * prob_3sigma) / np.sum(prob_3sigma) # expectation value of v3s
+        
+        # compute the variance of the source voltage within 3 sigma
+        voltage_squareddiff = (voltages_3sigma - sourcevoltage_expvalue)**2
+        sourcevoltage_variance = np.sqrt(np.sum(voltage_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
  
-        vmeans.append(vmean)
-        vstds.append(vstd)
+        vmeans.append(sourcevoltage_expvalue)
+        vstds.append(sourcevoltage_variance)
     
     plt.figure(); plt.errorbar(z_position, vmeans, yerr=vstds)
     
-    print np.array(z_position).shape
-    print np.array(vmeans).shape
-
-    print np.array(z_position)
-    print np.array(vmeans)
+    ############ LEAST SQUARES FITTING ################
     
-    vmean_fit = np.polyfit(np.array(z_position), np.array(vmeans), 2)
-    p = np.poly1d(vmean_fit)
+    
+    A = np.vstack([np.ones([1, len(z_position)]), np.array(z_position), np.array(z_position)**2]).T
+    meas = np.array(vmeans)
+    meas_cov = np.diag(np.array(vstds)**2)
+    
+     
+    polydeg = 2
+    scale = 1e5
+    polyparams_cov = scale*np.eye(polydeg+1)
+    polyparams_mean = np.zeros([polydeg+1])
+    
+    intTerm = np.linalg.inv(meas_cov + np.dot(A, np.dot(polyparams_cov, A.T)))
+    est_polyparams = polyparams_mean + np.dot(polyparams_cov, np.dot(A.T, np.dot( intTerm, (meas - np.dot(A, polyparams_mean)) ) ) ) 
+    error_polyparams = polyparams_cov  - np.dot(polyparams_cov, np.dot(A.T, np.dot(intTerm, np.dot(A, polyparams_cov)) ) )
+    
+    print 'estimated polyparams'
+    print est_polyparams
+    print 'estimated error'
+    print error_polyparams
+    
+    z0 = -est_polyparams[1]/est_polyparams[2]
+    z0_approxstdev = np.sqrt( ((1/est_polyparams[2])**2 * error_polyparams[2,2] ) + ( (est_polyparams[1]/est_polyparams[2]**2)**2 * error_polyparams[1,1] ) )
+            
+    print 'estimated z0'
+    print z0
+    print z0_approxstdev
+    
+    p = np.poly1d(est_polyparams[::-1])
     znews = np.linspace(np.min(z_position), np.max(z_position),100)
     pnews = p(znews)
-    plt.plot(znews, pnews)
+    plt.plot(znews, pnews)    
+
+    ##################################################
     
-    #np.polynomial.polynomial.polyfit(x, y, deg, rcond=None, full=False, w=weights)
-            
+    #vmean_fit_flipped, stats = np.polynomial.polynomial.polyfit(np.array(z_position), np.array(vmeans), 2, rcond=None, full=True, w=1/np.array(vstds))
+    #vmean_fit = vmean_fit_flipped[::-1]
+    
+    #p = np.poly1d(vmean_fit)
+    #znews = np.linspace(np.min(z_position), np.max(z_position),100)
+    #pnews = p(znews)
+    #plt.plot(znews, pnews)   
+
+
+    plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0, z0_approxstdev), va='top', ha='left', color='black')
+
+        
+    plt.title('Focusing')
+    plt.xlabel('$\mathbf{z}$')
+    plt.ylabel('amplitude')     
  
+    
+def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=2., plot=True):
+    
+    print 'warning! recomputing N for each scan'
+    
+    if last is None:
+        last = first
+    scan_nums = range(first, last+1)
+    all_scans = mfilt_katie(scan_nums)
+    if win is None:
+        win = np.ceil(rad2asec(np.abs(np.min(all_scans.x))))
+    
+    zpos = []
+    xpos = []
+    ypos = []
+    meas_whitened = []
+    for scan_num in range(first, last+1):
+        
+        scan = mfilt_katie(range(scan_num,scan_num+1))
+        
+        # place the measurements into meas_pad so that its padded to be of a power 2 length
+        meas = scan.__dict__[channel]
+
+        # original sequence length
+        N = len(scan.t) 
+        # compute pad length for efficient FFTs
+        pad = 2**int(np.ceil(np.log2(N))) 
+        
+        if scan_num == first:
+            whiteningfac = whiten_measurements(all_scans, pad, channel=channel)
+    
+        meas_pad = np.zeros(pad)
+        meas_pad[:N] = meas 
+    
+        # measurements of channel volatage in frequency domain
+        meas_rfft = np.fft.rfft(meas_pad) # N factor goes into fft, ifft = 1/N * ..
+        meas_rfft_conj = meas_rfft.conj(); 
+        meas_rfft_conj_white = meas_rfft_conj * whiteningfac 
+        
+        meas_whitened.append(meas_rfft_conj_white)
+        zpos.append(scan.z[0])
+        xpos.append(scan.x)
+        ypos.append(scan.y)
+    
+        
+    # compute the x and y coordinates that we are computing the maps over
+    z0search = 100
+    alphasearch = 100
+    
+    z0_min = min(zpos)
+    z0_max = max(zpos)
+    z0s = np.linspace(z0_min, z0_max, z0search)
+    alphas = np.linspace(alpha_min, alpha_max,alphasearch)    
+    
+    (z0s_grid, alphas_grid) = np.meshgrid(z0s, alphas) # search grid
+    zr = z0s_grid.ravel()
+    ar = alphas_grid.ravel()
+
+    
+    num_zs = len(zpos)
+    model_pad = np.zeros(pad)
+    snrs = [] # signal-to-noise ratios
+    norms = [] # sqrt of whitened matched filter signal power
+    for (ztest, atest) in zip(zr, ar):
+        
+        models = focus_model(xpos, ypos, zpos, x0=x0, y0=y0, fwhm=fwhm, z0=ztest, alpha=atest)
+        
+        snr =  0.0
+        norm = 0.0
+        for s in range(0,num_zs):
+            
+            N = len(models[s])
+            
+            # compute the ideal model in the time domain
+            model_pad[:N] = models[s]
+        
+            # convert the ideal model to the frequency domain and whiten
+            model_rfft = np.fft.rfft(model_pad) 
+            model_rfft_white = model_rfft * whiteningfac      
+
+            # compute the normalization by taking the square root of the whitened model spectrums' dot products
+            norm = norm + np.sum(np.abs(model_rfft_white)**2)
+            snr = snr + ( np.sum((model_rfft_white * meas_whitened[s]).real) )
+        
+        norm = np.sqrt(norm)
+        norms.append(norm)
+        snrs.append(snr/norm)
+        
+    # compute probablity and cumulative probabilities
+    isnr = np.argsort(np.array(snrs).ravel())[::-1] # reverse sort high to low
+    prob = np.exp((np.array(snrs).ravel()/np.sqrt(num_zs * pad/2.))**2/2.)
+    pcum = np.zeros_like(prob)
+    pcum[isnr] = np.cumsum(prob[isnr])
+    pcum = pcum.reshape(z0s_grid.shape) / np.sum(prob)
+    
+    # get the indices of the points on the map within 3 sigma and extract those z0s and probablities
+    indices_3sigma = (pcum.ravel() < 0.99730020393673979)
+    z0s_3sigma = z0s_grid.ravel()[indices_3sigma]
+    prob_3sigma = prob.ravel()[indices_3sigma]
+    # compute the expected value of the z0 within 3 sigma
+    z0_expvalue = np.sum(z0s_3sigma * prob_3sigma) / np.sum(prob_3sigma) # expectation value of v3s
+    # compute the variance of the source voltage within 3 sigma
+    z0_squareddiff = (z0s_3sigma - z0_expvalue)**2
+    z0_variance = np.sqrt(np.sum(z0_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
+
+        
+    if plot:
+        plt.figure()
+        plt.clf()
+        
+        plt.axis(aspect=1.0)
+        plt.imshow(np.array(snrs).reshape(z0s_grid.shape), extent=(z0_min, z0_max, alpha_min, alpha_max), interpolation='nearest', origin='lower', cmap='Spectral_r')
+        h1 = plt.contour(z0s_grid, alphas_grid, pcum, scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
+                
+        imax = np.argmax(np.array(snrs).ravel())
+        (zmax, amax) = (zr.ravel()[imax], ar.ravel()[imax])
+        plt.plot(zmax, amax, 'y+', ms=11, mew=2)
+        plt.text(z0_min+0.1, alpha_max-0.1, '[max $\mathbf{z}_0$: %.3f, max alpha: %.3f]' % (zmax, amax), va='top', ha='left', color='black')
+        plt.text(z0_min+0.1, alpha_max-0.2, '[expected $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0_expvalue, np.sqrt(z0_variance)), va='top', ha='left', color='black')
+
+        
+        plt.title('Focusing')
+        plt.xlabel('$\mathbf{z}_0$')
+        plt.ylabel('alpha')
+        plt.gca().set_aspect(1.0)
+ 
+        plt.gca().set_axis_bgcolor('white')    
+        plt.tight_layout()
+
+    return
+    
     
 def focus_mars():
     first = 60709
@@ -237,14 +437,49 @@ def focus_mars():
     z = mfilt_katie(np.array([first]))
     plt.figure(); plt.plot(z.b)
     
-    focusing_lmt2017(first, last=last, plot='False', win=50, channel='b')
+    focusing_1_lmt2017(first, last=last, plot=False, win=50, channel='b')
+    
+    channel = 'b'
+    fwhm = 11.
+    res = 2
+    win = 50
+    
+    out = pointing_lmt2017(first, last=None, plot=True, win=win, res=res, fwhm=fwhm, channel=channel)
+    
+    imax = np.argmax(out.snr.ravel())
+    (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
+    print xmax
+    print ymax
+
+    fitfocusmodel_lmt2017(first, last=last, x0=asec2rad(xmax), y0=asec2rad(ymax), win=win, res=res, fwhm=fwhm, channel=channel)
 
     
     
+def whiten_measurements(z, pad_psd, channel='b'):
     
+    Fs = z.fs
+    #extract the detrended voltage measurements
+    meas = z.__dict__[channel]
+
+
+    # compute the psd of the voltage measurements
+    (p, f) = psd(meas, NFFT=1024, pad_to=4096) # unit variance -> PSD = 1 = variance of complex FFT (1/sqrt(N))
+# LINDY COMMENT: we will take out the 1/Hz normalization later, to get unit variance per complex data point
+    if 'fillfrac' in z:
+        p = p / z.fillfrac # account for zeros in stiched timeseries (otherwise 1)
+
+    # sample frequencies for a sequence of length 'pad'. This should be equal to f...
+    freq_samples = np.abs(np.fft.fftfreq(pad_psd, d=1./2.)[:1+pad_psd/2]) # the default nyquist units
     
+    # Compute the factor that whitens the data. This is 1 over the point spread funcntion. 
+    # Each of the signals - the model and the measurements - should be whitened by the square root of this term
+    whiteningfac_squared = 1. / interp1d(f, p)(freq_samples) # compute 1/PSD at the locations of the measurements B. Really this shouldn't do anything...
+    whiteningfac_squared[freq_samples < 0.1 * (2./Fs)] = 0. # turn off low freqs below 0.1 Hz - just an arbitrary choice
+    whiteningfac = np.sqrt(whiteningfac_squared)
     
- 
+    return whiteningfac
+    
+
 def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     
     Fs = z.fs
@@ -256,39 +491,18 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     # compute pad length for efficient FFTs
     pad = 2**int(np.ceil(np.log2(N))) 
     
-    # compute the psd of the voltage measurements
-    (p, f) = psd(meas, NFFT=1024, pad_to=pad) # unit variance -> PSD = 1 = variance of complex FFT (1/sqrt(N))
-# LINDY COMMENT: we will take out the 1/Hz normalization later, to get unit variance per complex data point
-    if 'fillfrac' in z:
-        p = p / z.fillfrac # account for zeros in stiched timeseries (otherwise 1)
-
-    fac = np.zeros(pad)
-    mpad = np.zeros(pad)
-    ipad = np.zeros(pad).astype(bool)
+    whiteningfac = whiten_measurements(z, pad, channel=channel)
     
-
-    # sample frequencies for a sequence of length 'pad'. This should be equal to f...
-    freq_samples = np.abs(np.fft.fftfreq(pad, d=1./2.)[:1+pad/2]) # the default nyquist units
-    
-
-    # Compute the factor that whitens the data. This is 1 over the point spread funcntion. 
-    # Each of the signals - the model and the measurements - should be whitened by the square root of this term
-    whiteningfac_squared = 1. / interp1d(f, p)(freq_samples) # compute 1/PSD at the locations of the measurements B. Really this shouldn't do anything...
-    whiteningfac_squared[freq_samples < 0.1 * (2./Fs)] = 0. # turn off low freqs below 0.1 Hz - just an arbitrary choice
-    whiteningfac = np.sqrt(whiteningfac_squared)
-                 
-                 
     # place the measurements into meas_pad so that its padded to be of a power 2 length
+    modelpad = np.zeros(pad)
     meas_pad = np.zeros(pad)
-# lINDY COMMENT: fails if N = len(tp) ??
-    meas_pad[:N] = meas 
+    meas_pad[:N] = meas  # lINDY COMMENT: fails if N = len(tp) ??
     
     # measurements of channel volatage in frequency domain
     meas_rfft = np.fft.rfft(meas_pad) # N factor goes into fft, ifft = 1/N * ..
     meas_rfft_conj = meas_rfft.conj(); 
-    meas_rfft_conj_white = meas_rfft_conj * whiteningfac
-
-
+    meas_rfft_conj_white = meas_rfft_conj * whiteningfac 
+    
     # compute the x and y coordinates that we are computing the maps over
     x = asec2rad(np.arange(-win, win+res, res))
     y = asec2rad(np.arange(-win, win+res, res))
@@ -302,10 +516,10 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     for (xtest, ytest) in zip(xr, yr):
         
         # compute the ideal model in the time domain
-        mpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm) # model signal
+        modelpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm) # model signal
         
         # convert the ideal model to the frequency domain and whiten
-        model_rfft = np.fft.rfft(mpad) 
+        model_rfft = np.fft.rfft(modelpad) 
         model_rfft_white = model_rfft * whiteningfac      
 
         # compute the normalization by taking the square root of the whitened model spectrums' dot products
@@ -328,9 +542,18 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     xxa = xx * rad2asec(1.)
     yya = yy * rad2asec(1.)
     
-    return Namespace(xx=xxa, yy=yya, snr=snr/np.sqrt(pad/2.), v=1e3*snr/np.array(norms).reshape(xx.shape), prob=prob, pcum=pcum)
+    # m = model, b = measurements, 
+    # Expected [ b_conj * (noise + amplitude*m) ] 
+    #          = Expected [b_conj*noise + b_conj*amplitude*m] = 0 + amplitude*b_conj*m
+    # Optimally, m = b. Therefore to get out the amplitude we would need to divide by
+    # b_conj*m = |model|^2 = norms^2
+    volts2milivolts = 1e3
+    voltage = volts2milivolts * snr/ np.array(norms).reshape(xx.shape)
+    
+    return Namespace(xx=xxa, yy=yya, snr=snr/np.sqrt(pad/2.), v=voltage, prob=prob, pcum=pcum)
 
- 
+   
+
  
  # linear detrend, use only edges
 def detrend(x, ntaper=100):
@@ -350,3 +573,41 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 	# predicted counts
 	m = np.exp(-((x-x0)**2 + (y-y0)**2) / (2*sigma**2))
 	return m
+
+
+
+def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
+    fwhm = asec2rad(fwhm)
+    sigma = fwhm / 2.335
+      
+    count = 0
+    models = []
+    for z in zs:
+        sigma_z = sigma * (1 + alpha*np.abs(z-z0) )
+        amplitude_z = 1/( np.sqrt(2*np.pi) * (sigma_z)**2 )
+        m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
+        models.append(m_z)
+        count = count + 1
+        
+    return models
+
+ 
+def focus_model_old(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
+    fwhm = asec2rad(fwhm)
+    sigma = fwhm / 2.335
+ 
+    beta = 1/( np.sqrt(2*np.pi) * sigma**2)
+      
+    count = 0
+    models = []
+    for z in zs:
+        amplitude = (beta - alpha*beta*(z-z0)**2 )
+        if amplitude <=0:
+            m_z = np.nan*np.ones(xpos[count].shape)
+        else:
+            sigma_z = 1./ np.sqrt( np.sqrt(2*np.pi) * amplitude )
+            m_z = amplitude * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
+        models.append(m_z)
+        count = count + 1
+        
+	return models
