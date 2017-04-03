@@ -192,24 +192,6 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     
     return out
 
-
-    
-def focusing_2_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
-
-    
-    if last is None:
-        last = first       
-    vmeans = []
-    vstds = []
-    z_position = []
-
-    for scan in range(first, last+1):
-        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZAct'].data)
-
-    out = pointing_lmt2017(first, last=last, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
-    (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
-    
-    
         
         
 def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
@@ -406,24 +388,23 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
 
         
     if plot:
+        
         plt.figure()
         plt.clf()
         
-        plt.axis(aspect=1.0)
-        plt.imshow(np.array(snrs).reshape(z0s_grid.shape), extent=(z0_min, z0_max, alpha_min, alpha_max), interpolation='nearest', origin='lower', cmap='Spectral_r')
+        plt.imshow(np.array(snrs).reshape(z0s_grid.shape), extent=(z0_min, z0_max, alpha_min, alpha_max), aspect=(z0_max-z0_min)/(alpha_max-alpha_min), interpolation='nearest', origin='lower', cmap='Spectral_r')
         h1 = plt.contour(z0s_grid, alphas_grid, pcum, scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
                 
         imax = np.argmax(np.array(snrs).ravel())
         (zmax, amax) = (zr.ravel()[imax], ar.ravel()[imax])
         plt.plot(zmax, amax, 'y+', ms=11, mew=2)
-        plt.text(z0_min+0.1, alpha_max-0.1, '[max $\mathbf{z}_0$: %.3f, max alpha: %.3f]' % (zmax, amax), va='top', ha='left', color='black')
-        plt.text(z0_min+0.1, alpha_max-0.2, '[expected $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0_expvalue, np.sqrt(z0_variance)), va='top', ha='left', color='black')
+        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-(alphas[1]-alphas[0]), '[max $\mathbf{z}_0$: %.3f, max alpha: %.3e]' % (zmax, amax), va='top', ha='left', color='black')
+        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-4*(alphas[1]-alphas[0]), '[expected $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0_expvalue, np.sqrt(z0_variance)), va='top', ha='left', color='black')
 
         
         plt.title('Focusing')
         plt.xlabel('$\mathbf{z}_0$')
         plt.ylabel('alpha')
-        plt.gca().set_aspect(1.0)
  
         plt.gca().set_axis_bgcolor('white')    
         plt.tight_layout()
@@ -432,12 +413,15 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     
     
 def focus_mars():
+    
+    plt.close('all')
+    
     first = 60709
     last = 60713
     z = mfilt_katie(np.array([first]))
     plt.figure(); plt.plot(z.b)
     
-    focusing_1_lmt2017(first, last=last, plot=False, win=50, channel='b')
+    #focusing_1_lmt2017(first, last=last, plot=False, win=50, channel='b')
     
     channel = 'b'
     fwhm = 11.
@@ -451,7 +435,10 @@ def focus_mars():
     print xmax
     print ymax
 
-    fitfocusmodel_lmt2017(first, last=last, x0=asec2rad(xmax), y0=asec2rad(ymax), win=win, res=res, fwhm=fwhm, channel=channel)
+    factor = asec2rad(fwhm)/2.335
+    alpha_max = factor*2.
+    alpha_min = factor*0.
+    fitfocusmodel_lmt2017(first, last=last, x0=asec2rad(xmax), y0=asec2rad(ymax), win=win, res=res, fwhm=fwhm, channel=channel, alpha_max=alpha_max, alpha_min=alpha_min)
 
     
     
@@ -577,6 +564,22 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 
 
 def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
+    fwhm = asec2rad(fwhm)
+    sigma = fwhm / 2.335
+      
+    count = 0
+    models = []
+    for z in zs:
+        sigma_z = np.sqrt(sigma**2 + (alpha*np.abs(z-z0))**2)
+        amplitude_z = 1/( np.sqrt(2*np.pi) * (sigma_z)**2 )
+        m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
+        models.append(m_z)
+        count = count + 1
+        
+    return models
+
+ 
+def focus_model_old2(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
     fwhm = asec2rad(fwhm)
     sigma = fwhm / 2.335
       
