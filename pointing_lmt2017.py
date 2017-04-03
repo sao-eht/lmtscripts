@@ -76,7 +76,7 @@ def extract_katie(nc):
  
 def rawopen_katie(iobs):
     from scipy.io import netcdf
-    filename = glob('../data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc' % iobs)[-1]
+    filename = glob('../data_lmt/2017/vlbi1mm_*%06d*.nc' % iobs)[-1]
     nc = netcdf.netcdf_file(filename)
     # keep = dict((name.split('.')[-1], val.data) for (name, val) in nc.variables.items()
     #			if name[:4] == 'Data')
@@ -115,7 +115,7 @@ def mfilt_katie(scans):
         fss.append(scan.fs)
         
         print('warning! check this is okay')
-        zs.append(keep.nc.variables['Header.M2.ZAct'].data)
+        zs.append(keep.nc.variables['Header.M2.ZReq'].data)
         
     s = ss[0]
     fs = fss[0]
@@ -205,7 +205,7 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
 
     for scan in range(first, last+1):
         
-        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZAct'].data)
+        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZReq'].data)
 
         out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
@@ -251,17 +251,22 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
     print 'estimated error'
     print error_polyparams
     
-    z0 = -est_polyparams[1]/est_polyparams[2]
-    z0_approxstdev = np.sqrt( ((1/est_polyparams[2])**2 * error_polyparams[2,2] ) + ( (est_polyparams[1]/est_polyparams[2]**2)**2 * error_polyparams[1,1] ) )
+    #z0 = est_polyparams[0] - est_polyparams[1]**2/(4*est_polyparams[2])
+    #z0 = -est_polyparams[1]/est_polyparams[2]
+    #z0_approxstdev = np.sqrt( ((1/est_polyparams[2])**2 * error_polyparams[2,2] ) + ( (est_polyparams[1]/est_polyparams[2]**2)**2 * error_polyparams[1,1] ) )
             
-    print 'estimated z0'
-    print z0
-    print z0_approxstdev
+    #print z0_approxstdev
     
     p = np.poly1d(est_polyparams[::-1])
     znews = np.linspace(np.min(z_position), np.max(z_position),100)
     pnews = p(znews)
     plt.plot(znews, pnews)    
+    
+    imax = np.argmax(pnews)
+    z0 = znews[imax]
+
+    print 'estimated z0'
+    print z0
 
     ##################################################
     
@@ -274,15 +279,17 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
     #plt.plot(znews, pnews)   
 
 
-    plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0, z0_approxstdev), va='top', ha='left', color='black')
+    #plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0, z0_approxstdev), va='top', ha='left', color='black')
+    plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f]' % (z0), va='top', ha='left', color='black')
 
         
     plt.title('Focusing')
     plt.xlabel('$\mathbf{z}$')
     plt.ylabel('amplitude')     
- 
+
     
-def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=2., plot=True):
+    
+def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., plot=True):
     
     print 'warning! recomputing N for each scan'
     
@@ -327,26 +334,35 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     
         
     # compute the x and y coordinates that we are computing the maps over
-    z0search = 100
-    alphasearch = 100
+    z0search = 20
+    alphasearch = 20
     
     z0_min = min(zpos)
     z0_max = max(zpos)
     z0s = np.linspace(z0_min, z0_max, z0search)
     alphas = np.linspace(alpha_min, alpha_max,alphasearch)    
     
-    (z0s_grid, alphas_grid) = np.meshgrid(z0s, alphas) # search grid
+    # compute the x and y coordinates that we are computing the maps over
+    x = asec2rad(np.arange(x0-win, x0+win+res, res))
+    y = asec2rad(np.arange(y0-win, y0+win+res, res))
+    
+    (z0s_grid, alphas_grid, xx_grid, yy_grid) = np.meshgrid(z0s, alphas, x, y) # search grid
     zr = z0s_grid.ravel()
     ar = alphas_grid.ravel()
+    xr = xx_grid.ravel()
+    yr = yy_grid.ravel()
 
+    count = 0.
     
     num_zs = len(zpos)
     model_pad = np.zeros(pad)
     snrs = [] # signal-to-noise ratios
     norms = [] # sqrt of whitened matched filter signal power
-    for (ztest, atest) in zip(zr, ar):
+    for (ztest, atest, xtest, ytest) in zip(zr, ar, xr, yr):
         
-        models = focus_model(xpos, ypos, zpos, x0=x0, y0=y0, fwhm=fwhm, z0=ztest, alpha=atest)
+        #print count/len(zr)
+        
+        models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest)
         
         snr =  0.0
         norm = 0.0
@@ -368,6 +384,7 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         norm = np.sqrt(norm)
         norms.append(norm)
         snrs.append(snr/norm)
+        count = count + 1.
         
     # compute probablity and cumulative probabilities
     isnr = np.argsort(np.array(snrs).ravel())[::-1] # reverse sort high to low
@@ -386,31 +403,71 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     z0_squareddiff = (z0s_3sigma - z0_expvalue)**2
     z0_variance = np.sqrt(np.sum(z0_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
 
+
+
+    imax = np.argmax(np.array(snrs).ravel())
+    (zmax, amax, xmax, ymax) = (zr.ravel()[imax], ar.ravel()[imax], xr.ravel()[imax], yr.ravel()[imax])
+        
+    print 'z0 best value'
+    print zmax
+    print rad2asec(xmax)
+    print rad2asec(ymax)
+    
         
     if plot:
         
         plt.figure()
         plt.clf()
         
-        plt.imshow(np.array(snrs).reshape(z0s_grid.shape), extent=(z0_min, z0_max, alpha_min, alpha_max), aspect=(z0_max-z0_min)/(alpha_max-alpha_min), interpolation='nearest', origin='lower', cmap='Spectral_r')
-        h1 = plt.contour(z0s_grid, alphas_grid, pcum, scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
+        loc = np.unravel_index(imax, xx_grid.shape)
+        reshape_snr = np.array(snrs).reshape(z0s_grid.shape)
+        slice_snr = reshape_snr[:,:,loc[2],loc[3]]
+        
+        plt.imshow(slice_snr, extent=(z0_min, z0_max, alpha_min, alpha_max), aspect=(z0_max-z0_min)/(alpha_max-alpha_min), interpolation='nearest', origin='lower', cmap='Spectral_r')
+        h1 = plt.contour(z0s_grid[:,:,loc[2],loc[3]], alphas_grid[:,:,loc[2],loc[3]], pcum[:,:,loc[2],loc[3]], scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
                 
-        imax = np.argmax(np.array(snrs).ravel())
-        (zmax, amax) = (zr.ravel()[imax], ar.ravel()[imax])
+        
         plt.plot(zmax, amax, 'y+', ms=11, mew=2)
-        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-(alphas[1]-alphas[0]), '[max $\mathbf{z}_0$: %.3f, max alpha: %.3e]' % (zmax, amax), va='top', ha='left', color='black')
+        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-(alphas[1]-alphas[0]), '[maximum $\mathbf{z}_0$: %.3f,  x: %.3f,  y: %.3f, alpha: %.3f]' % (zmax, rad2asec(xmax), rad2asec(ymax), amax), va='top', ha='left', color='black')
         plt.text(z0_min+z0s[1]-z0s[0], alpha_max-4*(alphas[1]-alphas[0]), '[expected $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0_expvalue, np.sqrt(z0_variance)), va='top', ha='left', color='black')
 
         
         plt.title('Focusing')
         plt.xlabel('$\mathbf{z}_0$')
-        plt.ylabel('alpha')
+        plt.ylabel('alpha (FWHM in arcseconds per mm offset in $\mathbf{z}$)')
  
         plt.gca().set_axis_bgcolor('white')    
         plt.tight_layout()
 
     return
     
+
+def focus_mars_2017():
+    
+    plt.close('all')
+    
+    first = 68716
+    last = 68721
+    z = mfilt_katie(np.array([first]))
+    plt.figure(); plt.plot(z.b)
+    
+    #focusing_1_lmt2017(first, last=last, plot=False, win=50, channel='b')
+    
+    channel = 'b'
+    fwhm = 11.
+    res = 2
+    win = 50
+    
+    out = pointing_lmt2017(first, last=None, plot=False, win=win, res=res, fwhm=fwhm, channel=channel)
+    
+    imax = np.argmax(out.snr.ravel())
+    (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
+    print xmax
+    print ymax
+
+    fitfocusmodel_lmt2017(first, last=last, x0=xmax, y0=ymax, win=5., res=res, fwhm=fwhm, channel=channel)
+
+
     
 def focus_mars():
     
@@ -435,9 +492,8 @@ def focus_mars():
     print xmax
     print ymax
 
-    factor = asec2rad(fwhm)/2.335
-    alpha_max = factor*2.
-    alpha_min = factor*0.
+    alpha_max = 2.
+    alpha_min = 0.
     fitfocusmodel_lmt2017(first, last=last, x0=asec2rad(xmax), y0=asec2rad(ymax), win=win, res=res, fwhm=fwhm, channel=channel, alpha_max=alpha_max, alpha_min=alpha_min)
 
     
@@ -564,13 +620,16 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 
 
 def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
-    fwhm = asec2rad(fwhm)
-    sigma = fwhm / 2.335
+    
+    fwhm2stdev_factor = 1/2.335
+    
+    sigma = asec2rad(fwhm) * fwhm2stdev_factor
+    alpha_rad = asec2rad(alpha) * fwhm2stdev_factor
       
     count = 0
     models = []
     for z in zs:
-        sigma_z = np.sqrt(sigma**2 + (alpha*np.abs(z-z0))**2)
+        sigma_z = np.sqrt(sigma**2 + (alpha_rad*np.abs(z-z0))**2)
         amplitude_z = 1/( np.sqrt(2*np.pi) * (sigma_z)**2 )
         m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
         models.append(m_z)
