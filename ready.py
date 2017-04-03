@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # missing tests:
 #   DONE: vv time offset (needs root)
 #   DONE: NTP offset is small
