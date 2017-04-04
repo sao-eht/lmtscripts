@@ -25,32 +25,35 @@ def rad2asec(rad):
 	return rad * 3600. * 360. / (2*np.pi)
 
 ###################
- 
- 
-def focus(first, last, plot=False, point=False, win=50., res=2., fwhm=11., channel='b'):
+
+def focus(first, last, plot=False, point=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
     
     plt.close('all')
     
-    z = mfilt_katie(np.array([first]))
-    focusing_1_lmt2017(first, last=last, plot=plot, win=50, channel=channel)
-    
     if point:
         print 'pointing'
-        out = pointing_lmt2017(first, last=None, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
+        out = pointing_lmt2017(first, last=last, plot=plot, win=win_pointing, res=res, fwhm=fwhm, channel=channel)
         imax = np.argmax(out.snr.ravel())
         (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
     else:
         xmax = 0.
         ymax = 0.
 
-    fitfocusmodel_lmt2017(first, last=last, x0=xmax, y0=ymax, win=5., res=res, fwhm=fwhm, channel=channel)
+    scans = range(first, last+1)
+    focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
+    
 
-
+def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+    
+    focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel)
+    focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
+    
+    
 ################### EXTRACT INFORMATION ###################
 
 
 # extract 1mm total power data and fix some timing jitter issues
-def extract_katie(nc):
+def extract(nc):
 	t0 = nc.variables['Data.Sky.Time'].data[0]
 	t = nc.variables['Data.Sky.Time'].data - t0
 	a = nc.variables['Data.Vlbi1mmTpm.APower'].data
@@ -93,7 +96,7 @@ def extract_katie(nc):
 	return Namespace(t0=t0, t=t, a=a, b=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
 
  
-def rawopen_katie(iobs):
+def rawopen(iobs):
     from scipy.io import netcdf
     filename = glob('../data_lmt/2017/vlbi1mm_*%06d*.nc' % iobs)[-1]
     nc = netcdf.netcdf_file(filename)
@@ -112,7 +115,7 @@ def rawopen_katie(iobs):
     return keep
   
 # patch together many scans and try to align in time (to the sample -- to keep X and Y)
-def mfilt_katie(scans):
+def mfilt(scans):
     aps = []
     bps = []
     xs = []
@@ -123,8 +126,8 @@ def mfilt_katie(scans):
     zs = []
     ntaper = 100
     for i in sorted(scans):
-        keep = rawopen_katie(i)
-        scan = extract_katie(keep.nc)
+        keep = rawopen(i)
+        scan = extract(keep.nc)
         aps.append(detrend(scan.a, ntaper=ntaper))
         bps.append(detrend(scan.b, ntaper=ntaper))
         ts.append(scan.t + scan.t0)
@@ -132,8 +135,6 @@ def mfilt_katie(scans):
         ys.append(scan.y)
         ss.append(scan.source)
         fss.append(scan.fs)
-        
-        print('warning! check this is okay')
         zs.append(keep.nc.variables['Header.M2.ZReq'].data)
         
     s = ss[0]
@@ -160,7 +161,7 @@ def mfilt_katie(scans):
 
  
 
-################### POINTING ###################
+################### POINTING & FOCUSING ###################
 
 
 def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
@@ -170,7 +171,7 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     if last is None:
         last = first
     scans = range(first, last+1)
-    z = mfilt_katie(scans)
+    z = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
         
@@ -212,19 +213,16 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     return out
 
         
-        
-def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
 
-    
-    if last is None:
-        last = first       
+          
     vmeans = []
     vstds = []
     z_position = []
 
-    for scan in range(first, last+1):
+    for scan in scans:
         
-        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZReq'].data)
+        z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
 
         out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
@@ -302,14 +300,11 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
 
     
     
-def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., plot=True):
+def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
     print 'warning! recomputing N for each scan'
     
-    if last is None:
-        last = first
-    scan_nums = range(first, last+1)
-    all_scans = mfilt_katie(scan_nums)
+    all_scans = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(all_scans.x))))
     
@@ -317,9 +312,9 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     xpos = []
     ypos = []
     meas_whitened = []
-    for scan_num in range(first, last+1):
+    for scan_num in scans:
         
-        scan = mfilt_katie(range(scan_num,scan_num+1))
+        scan = mfilt(range(scan_num,scan_num+1))
         
         # place the measurements into meas_pad so that its padded to be of a power 2 length
         meas = scan.__dict__[channel]
@@ -329,7 +324,7 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         # compute pad length for efficient FFTs
         pad = 2**int(np.ceil(np.log2(N))) 
         
-        if scan_num == first:
+        if scan_num == scans[0]:
             whiteningfac = whiten_measurements(all_scans, pad, channel=channel)
     
         meas_pad = np.zeros(pad)
@@ -344,11 +339,6 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         zpos.append(scan.z[0])
         xpos.append(scan.x)
         ypos.append(scan.y)
-    
-        
-    # compute the x and y coordinates that we are computing the maps over
-    z0search = 20
-    alphasearch = 20
     
     z0_min = min(zpos)
     z0_max = max(zpos)
@@ -424,10 +414,8 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     imax = np.argmax(np.array(snrs).ravel())
     (zmax, amax, xmax, ymax) = (zr.ravel()[imax], ar.ravel()[imax], xr.ravel()[imax], yr.ravel()[imax])
         
-    print 'z0 best value'
+    print 'estimated z0'
     print zmax
-    print rad2asec(xmax)
-    print rad2asec(ymax)
     
         
     if plot:
