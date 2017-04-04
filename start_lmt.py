@@ -113,8 +113,8 @@ preScanMargin = options.preScanMargin
 validate()
 
 # launch the mark6 schedule
-#schedArgs = "%s -f %s" % (m6ccCommand, schedule)
-#m6cc = subprocess.Popen(["xterm", "-e", schedArgs], stderr=subprocess.STDOUT)
+schedArgs = "%s -f %s" % (m6ccCommand, schedule)
+m6cc = subprocess.Popen(["xterm", "-e", schedArgs], stderr=subprocess.STDOUT)
 
 tree = ET.parse(args[0])
 root = tree.getroot()
