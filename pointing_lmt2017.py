@@ -196,7 +196,7 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
         plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
         plt.text(-0.99*win-res/2, 0.98*win+res/2, '[%.1f, %.1f]"' % (xmax, ymax), va='top', ha='left', color='black')
 
-        plt.title(z.source)
+        plt.title(z.source.strip() + '     scans:' + str(first) + '-' + str(last))
         plt.xlabel('$\Delta$x [arcsec]')
         plt.ylabel('$\Delta$y [arcsec]')
         plt.gca().set_aspect(1.0)
