@@ -12,7 +12,7 @@ from glob import glob
 import scipy.io
 from scipy.signal import butter,lfilter,freqz
 from scipy.interpolate import interp1d
-from scipy.ndimage.filters import minimum_filter1d
+#from scipy.ndimage.filters import minimum_filter1dar
 from scipy.interpolate import UnivariateSpline
 from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
@@ -24,14 +24,36 @@ def asec2rad(asec):
 def rad2asec(rad):
 	return rad * 3600. * 360. / (2*np.pi)
 
+###################
 
+def focus(first, last, plot=False, point=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+    
+    plt.close('all')
+    
+    if point:
+        print 'pointing'
+        out = pointing_lmt2017(first, last=last, plot=plot, win=win_pointing, res=res, fwhm=fwhm, channel=channel)
+        imax = np.argmax(out.snr.ravel())
+        (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
+    else:
+        xmax = 0.
+        ymax = 0.
 
+    scans = range(first, last+1)
+    focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
+    
 
+def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+    
+    focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel)
+    focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
+    
+    
 ################### EXTRACT INFORMATION ###################
 
 
 # extract 1mm total power data and fix some timing jitter issues
-def extract_katie(nc):
+def extract(nc):
 	t0 = nc.variables['Data.Sky.Time'].data[0]
 	t = nc.variables['Data.Sky.Time'].data - t0
 	a = nc.variables['Data.Vlbi1mmTpm.APower'].data
@@ -74,9 +96,9 @@ def extract_katie(nc):
 	return Namespace(t0=t0, t=t, a=a, b=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
 
  
-def rawopen_katie(iobs):
+def rawopen(iobs):
     from scipy.io import netcdf
-    filename = glob('../data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc' % iobs)[-1]
+    filename = glob('../data_lmt/2017/vlbi1mm_*%06d*.nc' % iobs)[-1]
     nc = netcdf.netcdf_file(filename)
     # keep = dict((name.split('.')[-1], val.data) for (name, val) in nc.variables.items()
     #			if name[:4] == 'Data')
@@ -93,7 +115,7 @@ def rawopen_katie(iobs):
     return keep
   
 # patch together many scans and try to align in time (to the sample -- to keep X and Y)
-def mfilt_katie(scans):
+def mfilt(scans):
     aps = []
     bps = []
     xs = []
@@ -104,8 +126,8 @@ def mfilt_katie(scans):
     zs = []
     ntaper = 100
     for i in sorted(scans):
-        keep = rawopen_katie(i)
-        scan = extract_katie(keep.nc)
+        keep = rawopen(i)
+        scan = extract(keep.nc)
         aps.append(detrend(scan.a, ntaper=ntaper))
         bps.append(detrend(scan.b, ntaper=ntaper))
         ts.append(scan.t + scan.t0)
@@ -113,9 +135,7 @@ def mfilt_katie(scans):
         ys.append(scan.y)
         ss.append(scan.source)
         fss.append(scan.fs)
-        
-        print('warning! check this is okay')
-        zs.append(keep.nc.variables['Header.M2.ZAct'].data)
+        zs.append(keep.nc.variables['Header.M2.ZReq'].data)
         
     s = ss[0]
     fs = fss[0]
@@ -141,7 +161,7 @@ def mfilt_katie(scans):
 
  
 
-################### POINTING ###################
+################### POINTING & FOCUSING ###################
 
 
 def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
@@ -151,7 +171,7 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     if last is None:
         last = first
     scans = range(first, last+1)
-    z = mfilt_katie(scans)
+    z = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
         
@@ -176,7 +196,7 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
         plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
         plt.text(-0.99*win-res/2, 0.98*win+res/2, '[%.1f, %.1f]"' % (xmax, ymax), va='top', ha='left', color='black')
 
-        plt.title(z.source)
+        plt.title(z.source.strip() + '     scans:' + str(first) + '-' + str(last))
         plt.xlabel('$\Delta$x [arcsec]')
         plt.ylabel('$\Delta$y [arcsec]')
         plt.gca().set_aspect(1.0)
@@ -193,19 +213,16 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     return out
 
         
-        
-def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
 
-    
-    if last is None:
-        last = first       
+          
     vmeans = []
     vstds = []
     z_position = []
 
-    for scan in range(first, last+1):
+    for scan in scans:
         
-        z_position.append(rawopen_katie(scan).nc.variables['Header.M2.ZAct'].data)
+        z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
 
         out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
@@ -246,22 +263,21 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
     est_polyparams = polyparams_mean + np.dot(polyparams_cov, np.dot(A.T, np.dot( intTerm, (meas - np.dot(A, polyparams_mean)) ) ) ) 
     error_polyparams = polyparams_cov  - np.dot(polyparams_cov, np.dot(A.T, np.dot(intTerm, np.dot(A, polyparams_cov)) ) )
     
-    print 'estimated polyparams'
-    print est_polyparams
-    print 'estimated error'
-    print error_polyparams
-    
-    z0 = -est_polyparams[1]/est_polyparams[2]
-    z0_approxstdev = np.sqrt( ((1/est_polyparams[2])**2 * error_polyparams[2,2] ) + ( (est_polyparams[1]/est_polyparams[2]**2)**2 * error_polyparams[1,1] ) )
-            
-    print 'estimated z0'
-    print z0
-    print z0_approxstdev
+    #print 'estimated polyparams'
+    #print est_polyparams
+    #print 'estimated error'
+    #print error_polyparams
     
     p = np.poly1d(est_polyparams[::-1])
     znews = np.linspace(np.min(z_position), np.max(z_position),100)
     pnews = p(znews)
     plt.plot(znews, pnews)    
+    
+    imax = np.argmax(pnews)
+    z0 = znews[imax]
+
+    print 'estimated z0'
+    print z0
 
     ##################################################
     
@@ -274,22 +290,21 @@ def focusing_1_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., 
     #plt.plot(znews, pnews)   
 
 
-    plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0, z0_approxstdev), va='top', ha='left', color='black')
+    #plt.text(-1.4, 210., '[estimated $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0, z0_approxstdev), va='top', ha='left', color='black')
+    plt.text(min(znews), min(pnews), '[peak $\mathbf{z}$: %.3f]' % (z0), va='top', ha='left', color='black')
 
         
     plt.title('Focusing')
     plt.xlabel('$\mathbf{z}$')
     plt.ylabel('amplitude')     
- 
+
     
-def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=2., plot=True):
+    
+def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
     print 'warning! recomputing N for each scan'
     
-    if last is None:
-        last = first
-    scan_nums = range(first, last+1)
-    all_scans = mfilt_katie(scan_nums)
+    all_scans = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(all_scans.x))))
     
@@ -297,9 +312,9 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     xpos = []
     ypos = []
     meas_whitened = []
-    for scan_num in range(first, last+1):
+    for scan_num in scans:
         
-        scan = mfilt_katie(range(scan_num,scan_num+1))
+        scan = mfilt(range(scan_num,scan_num+1))
         
         # place the measurements into meas_pad so that its padded to be of a power 2 length
         meas = scan.__dict__[channel]
@@ -309,7 +324,7 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         # compute pad length for efficient FFTs
         pad = 2**int(np.ceil(np.log2(N))) 
         
-        if scan_num == first:
+        if scan_num == scans[0]:
             whiteningfac = whiten_measurements(all_scans, pad, channel=channel)
     
         meas_pad = np.zeros(pad)
@@ -325,28 +340,35 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         xpos.append(scan.x)
         ypos.append(scan.y)
     
-        
-    # compute the x and y coordinates that we are computing the maps over
-    z0search = 100
-    alphasearch = 100
-    
     z0_min = min(zpos)
     z0_max = max(zpos)
     z0s = np.linspace(z0_min, z0_max, z0search)
     alphas = np.linspace(alpha_min, alpha_max,alphasearch)    
     
-    (z0s_grid, alphas_grid) = np.meshgrid(z0s, alphas) # search grid
+    # compute the x and y coordinates that we are computing the maps over
+    x = asec2rad(np.arange(x0-win, x0+win+res, res))
+    y = asec2rad(np.arange(y0-win, y0+win+res, res))
+    
+    (z0s_grid, alphas_grid, xx_grid, yy_grid) = np.meshgrid(z0s, alphas, x, y) # search grid
     zr = z0s_grid.ravel()
     ar = alphas_grid.ravel()
-
+    xr = xx_grid.ravel()
+    yr = yy_grid.ravel()
     
+    count = 0.
     num_zs = len(zpos)
     model_pad = np.zeros(pad)
     snrs = [] # signal-to-noise ratios
     norms = [] # sqrt of whitened matched filter signal power
-    for (ztest, atest) in zip(zr, ar):
+    for (ztest, atest, xtest, ytest) in zip(zr, ar, xr, yr):
         
-        models = focus_model(xpos, ypos, zpos, x0=x0, y0=y0, fwhm=fwhm, z0=ztest, alpha=atest)
+        #print count/len(zr)
+        
+        if disk_diameter > 0:
+            models = focus_model_disk(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest, disk_diameter=disk_diameter, res=0.2)
+        else:
+            models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest)
+        
         
         snr =  0.0
         norm = 0.0
@@ -368,6 +390,7 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
         norm = np.sqrt(norm)
         norms.append(norm)
         snrs.append(snr/norm)
+        count = count + 1.
         
     # compute probablity and cumulative probabilities
     isnr = np.argsort(np.array(snrs).ravel())[::-1] # reverse sort high to low
@@ -386,61 +409,43 @@ def fitfocusmodel_lmt2017(first, last=None, x0=0, y0=0, win=50., res=2., fwhm=11
     z0_squareddiff = (z0s_3sigma - z0_expvalue)**2
     z0_variance = np.sqrt(np.sum(z0_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
 
+
+
+    imax = np.argmax(np.array(snrs).ravel())
+    (zmax, amax, xmax, ymax) = (zr.ravel()[imax], ar.ravel()[imax], xr.ravel()[imax], yr.ravel()[imax])
+        
+    print 'estimated z0'
+    print zmax
+    
         
     if plot:
         
         plt.figure()
         plt.clf()
         
-        plt.imshow(np.array(snrs).reshape(z0s_grid.shape), extent=(z0_min, z0_max, alpha_min, alpha_max), aspect=(z0_max-z0_min)/(alpha_max-alpha_min), interpolation='nearest', origin='lower', cmap='Spectral_r')
-        h1 = plt.contour(z0s_grid, alphas_grid, pcum, scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
+        loc = np.unravel_index(imax, xx_grid.shape)
+        reshape_snr = np.array(snrs).reshape(z0s_grid.shape)
+        slice_snr = reshape_snr[:,:,loc[2],loc[3]]
+        
+        plt.imshow(slice_snr, extent=(z0_min, z0_max, alpha_min, alpha_max), aspect=(z0_max-z0_min)/(alpha_max-alpha_min), interpolation='nearest', origin='lower', cmap='Spectral_r')
+        h1 = plt.contour(z0s_grid[:,:,loc[2],loc[3]], alphas_grid[:,:,loc[2],loc[3]], pcum[:,:,loc[2],loc[3]], scipy.special.erf(np.array([0,1,2,3])/np.sqrt(2)), colors='cyan', linewidths=2, alpha=1.0)
                 
-        imax = np.argmax(np.array(snrs).ravel())
-        (zmax, amax) = (zr.ravel()[imax], ar.ravel()[imax])
+        
         plt.plot(zmax, amax, 'y+', ms=11, mew=2)
-        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-(alphas[1]-alphas[0]), '[max $\mathbf{z}_0$: %.3f, max alpha: %.3e]' % (zmax, amax), va='top', ha='left', color='black')
+        plt.text(z0_min+z0s[1]-z0s[0], alpha_max-(alphas[1]-alphas[0]), '[maximum $\mathbf{z}_0$: %.3f,  x: %.3f,  y: %.3f, alpha: %.3f]' % (zmax, rad2asec(xmax), rad2asec(ymax), amax), va='top', ha='left', color='black')
         plt.text(z0_min+z0s[1]-z0s[0], alpha_max-4*(alphas[1]-alphas[0]), '[expected $\mathbf{z}_0$: %.3f $\pm$ %.3f]' % (z0_expvalue, np.sqrt(z0_variance)), va='top', ha='left', color='black')
 
         
         plt.title('Focusing')
         plt.xlabel('$\mathbf{z}_0$')
-        plt.ylabel('alpha')
+        plt.ylabel('alpha (FWHM in arcseconds per mm offset in $\mathbf{z}$)')
  
         plt.gca().set_axis_bgcolor('white')    
         plt.tight_layout()
 
     return
     
-    
-def focus_mars():
-    
-    plt.close('all')
-    
-    first = 60709
-    last = 60713
-    z = mfilt_katie(np.array([first]))
-    plt.figure(); plt.plot(z.b)
-    
-    #focusing_1_lmt2017(first, last=last, plot=False, win=50, channel='b')
-    
-    channel = 'b'
-    fwhm = 11.
-    res = 2
-    win = 50
-    
-    out = pointing_lmt2017(first, last=None, plot=True, win=win, res=res, fwhm=fwhm, channel=channel)
-    
-    imax = np.argmax(out.snr.ravel())
-    (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
-    print xmax
-    print ymax
 
-    factor = asec2rad(fwhm)/2.335
-    alpha_max = factor*2.
-    alpha_min = factor*0.
-    fitfocusmodel_lmt2017(first, last=last, x0=asec2rad(xmax), y0=asec2rad(ymax), win=win, res=res, fwhm=fwhm, channel=channel, alpha_max=alpha_max, alpha_min=alpha_min)
-
-    
     
 def whiten_measurements(z, pad_psd, channel='b'):
     
@@ -564,53 +569,56 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 
 
 def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
-    fwhm = asec2rad(fwhm)
-    sigma = fwhm / 2.335
+    
+    fwhm2stdev_factor = 1/2.335
+    
+    sigma = asec2rad(fwhm) * fwhm2stdev_factor
+    alpha_rad = asec2rad(alpha) * fwhm2stdev_factor
       
     count = 0
     models = []
     for z in zs:
-        sigma_z = np.sqrt(sigma**2 + (alpha*np.abs(z-z0))**2)
+        sigma_z = np.sqrt(sigma**2 + (alpha_rad*np.abs(z-z0))**2)
         amplitude_z = 1/( np.sqrt(2*np.pi) * (sigma_z)**2 )
         m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
         models.append(m_z)
         count = count + 1
         
     return models
-
- 
-def focus_model_old2(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
-    fwhm = asec2rad(fwhm)
-    sigma = fwhm / 2.335
+    
+def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_diameter=0., res=2.):
+    
+    # generate a disk image at radian positions xx and yy
+    disk_radius = disk_diameter/2.
+    scaling = 10
+    x = asec2rad(np.arange(x0-scaling*disk_radius, x0+scaling*disk_radius+res, res))
+    y = asec2rad(np.arange(y0-scaling*disk_radius, y0+scaling*disk_radius+res, res))
+    (xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
+    disk = np.zeros(xx_disk.shape)
+    disk[ (xx_disk**2 + yy_disk**2) <= asec2rad(disk_radius)**2 ] = 1.
+    
+    
+    fwhm2stdev_factor = 1/2.335
+    
+    sigma = asec2rad(fwhm) * fwhm2stdev_factor
+    alpha_rad = asec2rad(alpha) * fwhm2stdev_factor
       
     count = 0
     models = []
     for z in zs:
-        sigma_z = sigma * (1 + alpha*np.abs(z-z0) )
+        sigma_z = np.sqrt(sigma**2 + (alpha_rad*np.abs(z-z0))**2)
         amplitude_z = 1/( np.sqrt(2*np.pi) * (sigma_z)**2 )
-        m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
+        
+        sigma_z_pixels = sigma_z/asec2rad(res)
+        blurred_disk = scipy.ndimage.filters.gaussian_filter(disk, sigma_z_pixels, mode='constant', cval=0.0)
+
+        #interpfunc = scipy.interpolate.RectBivariateSpline(xx_disk.flatten(), yy_disk.flatten(), blurred_disk.flatten())
+        interpfunc = scipy.interpolate.RectBivariateSpline(y, x, blurred_disk)
+        m_z = interpfunc(ypos[count], xpos[count],  grid=False)
+
         models.append(m_z)
         count = count + 1
-        
+    
+    #plt.figure(); plt.imshow(blurred_disk)
     return models
 
- 
-def focus_model_old(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
-    fwhm = asec2rad(fwhm)
-    sigma = fwhm / 2.335
- 
-    beta = 1/( np.sqrt(2*np.pi) * sigma**2)
-      
-    count = 0
-    models = []
-    for z in zs:
-        amplitude = (beta - alpha*beta*(z-z0)**2 )
-        if amplitude <=0:
-            m_z = np.nan*np.ones(xpos[count].shape)
-        else:
-            sigma_z = 1./ np.sqrt( np.sqrt(2*np.pi) * amplitude )
-            m_z = amplitude * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
-        models.append(m_z)
-        count = count + 1
-        
-	return models
