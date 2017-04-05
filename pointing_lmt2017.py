@@ -26,7 +26,7 @@ def rad2asec(rad):
 
 ###################
 
-def focus(first, last, plot=False, point=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
     
     plt.close('all')
     
@@ -40,6 +40,7 @@ def focus(first, last, plot=False, point=False, win_pointing=50., win_focusing=5
         ymax = 0.
 
     scans = range(first, last+1)
+    print scans
     focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
     
 
@@ -49,6 +50,151 @@ def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing
     focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
     
     
+    
+###########################################################
+
+# Based on scitools meshgrid
+def meshgrid_lmtscripts(*xi, **kwargs):
+    """
+    Return coordinate matrices from coordinate vectors.
+
+    Make N-D coordinate arrays for vectorized evaluations of
+    N-D scalar/vector fields over N-D grids, given
+    one-dimensional coordinate arrays x1, x2,..., xn.
+
+    .. versionchanged:: 1.9
+       1-D and 0-D cases are allowed.
+
+    Parameters
+    ----------
+    x1, x2,..., xn : array_like
+        1-D arrays representing the coordinates of a grid.
+    indexing : {'xy', 'ij'}, optional
+        Cartesian ('xy', default) or matrix ('ij') indexing of output.
+        See Notes for more details.
+
+        .. versionadded:: 1.7.0
+    sparse : bool, optional
+        If True a sparse grid is returned in order to conserve memory.
+        Default is False.
+
+        .. versionadded:: 1.7.0
+    copy : bool, optional
+        If False, a view into the original arrays are returned in order to
+        conserve memory.  Default is True.  Please note that
+        ``sparse=False, copy=False`` will likely return non-contiguous
+        arrays.  Furthermore, more than one element of a broadcast array
+        may refer to a single memory location.  If you need to write to the
+        arrays, make copies first.
+
+        .. versionadded:: 1.7.0
+
+    Returns
+    -------
+    X1, X2,..., XN : ndarray
+        For vectors `x1`, `x2`,..., 'xn' with lengths ``Ni=len(xi)`` ,
+        return ``(N1, N2, N3,...Nn)`` shaped arrays if indexing='ij'
+        or ``(N2, N1, N3,...Nn)`` shaped arrays if indexing='xy'
+        with the elements of `xi` repeated to fill the matrix along
+        the first dimension for `x1`, the second for `x2` and so on.
+
+    Notes
+    -----
+    This function supports both indexing conventions through the indexing
+    keyword argument.  Giving the string 'ij' returns a meshgrid with
+    matrix indexing, while 'xy' returns a meshgrid with Cartesian indexing.
+    In the 2-D case with inputs of length M and N, the outputs are of shape
+    (N, M) for 'xy' indexing and (M, N) for 'ij' indexing.  In the 3-D case
+    with inputs of length M, N and P, outputs are of shape (N, M, P) for
+    'xy' indexing and (M, N, P) for 'ij' indexing.  The difference is
+    illustrated by the following code snippet::
+
+        xv, yv = meshgrid(x, y, sparse=False, indexing='ij')
+        for i in range(nx):
+            for j in range(ny):
+                # treat xv[i,j], yv[i,j]
+
+        xv, yv = meshgrid(x, y, sparse=False, indexing='xy')
+        for i in range(nx):
+            for j in range(ny):
+                # treat xv[j,i], yv[j,i]
+
+    In the 1-D and 0-D case, the indexing and sparse keywords have no effect.
+
+    See Also
+    --------
+    index_tricks.mgrid : Construct a multi-dimensional "meshgrid"
+                     using indexing notation.
+    index_tricks.ogrid : Construct an open multi-dimensional "meshgrid"
+                     using indexing notation.
+
+    Examples
+    --------
+    >>> nx, ny = (3, 2)
+    >>> x = np.linspace(0, 1, nx)
+    >>> y = np.linspace(0, 1, ny)
+    >>> xv, yv = meshgrid(x, y)
+    >>> xv
+    array([[ 0. ,  0.5,  1. ],
+           [ 0. ,  0.5,  1. ]])
+    >>> yv
+    array([[ 0.,  0.,  0.],
+           [ 1.,  1.,  1.]])
+    >>> xv, yv = meshgrid(x, y, sparse=True)  # make sparse output arrays
+    >>> xv
+    array([[ 0. ,  0.5,  1. ]])
+    >>> yv
+    array([[ 0.],
+           [ 1.]])
+
+    `meshgrid` is very useful to evaluate functions on a grid.
+
+    >>> x = np.arange(-5, 5, 0.1)
+    >>> y = np.arange(-5, 5, 0.1)
+    >>> xx, yy = meshgrid(x, y, sparse=True)
+    >>> z = np.sin(xx**2 + yy**2) / (xx**2 + yy**2)
+    >>> h = plt.contourf(x,y,z)
+
+    """
+    ndim = len(xi)
+
+    copy_ = kwargs.pop('copy', True)
+    sparse = kwargs.pop('sparse', False)
+    indexing = kwargs.pop('indexing', 'xy')
+
+    if kwargs:
+        raise TypeError("meshgrid() got an unexpected keyword argument '%s'"
+                        % (list(kwargs)[0],))
+
+    if indexing not in ['xy', 'ij']:
+        raise ValueError(
+            "Valid values for `indexing` are 'xy' and 'ij'.")
+
+    s0 = (1,) * ndim
+    output = [np.asanyarray(x).reshape(s0[:i] + (-1,) + s0[i + 1::])
+              for i, x in enumerate(xi)]
+
+    shape = [x.size for x in output]
+
+    if indexing == 'xy' and ndim > 1:
+        # switch first and second axis
+        output[0].shape = (1, -1) + (1,)*(ndim - 2)
+        output[1].shape = (-1, 1) + (1,)*(ndim - 2)
+        shape[0], shape[1] = shape[1], shape[0]
+
+    if sparse:
+        if copy_:
+            return [x.copy() for x in output]
+        else:
+            return output
+    else:
+        # Return the full N-D matrix (not only the 1-D vector)
+        if copy_:
+            mult_fact = np.ones(shape, dtype=int)
+            return [x * mult_fact for x in output]
+        else:
+            return np.broadcast_arrays(*output)
+
 ################### EXTRACT INFORMATION ###################
 
 
@@ -137,6 +283,16 @@ def mfilt(scans):
         fss.append(scan.fs)
         zs.append(keep.nc.variables['Header.M2.ZReq'].data)
         
+    flag = 1
+    for s1 in range(0,len(ss)):
+        for s2 in range(s1,len(ss)):
+            if (ss[s1] != ss[s2]):
+                flag = 0
+                print('WARNING: NOT THE SAME SOURCE!!')
+                print ss
+                break
+                
+            
     s = ss[0]
     fs = fss[0]
     t0 = ts[0][0]
@@ -166,11 +322,18 @@ def mfilt(scans):
 
 def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
     
-    ############## pointing #############
-    
     if last is None:
         last = first
     scans = range(first, last+1)
+    
+    out = pointing_lmt2017_wrapper(scans, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
+    
+    return out
+
+def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+    
+    ############## pointing #############
+
     z = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
@@ -196,7 +359,7 @@ def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
         plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
         plt.text(-0.99*win-res/2, 0.98*win+res/2, '[%.1f, %.1f]"' % (xmax, ymax), va='top', ha='left', color='black')
 
-        plt.title(z.source.strip() + '     scans:' + str(first) + '-' + str(last))
+        plt.title(z.source.strip() + '     scans:' + str(scans[0]) + '-' + str(scans[-1]))
         plt.xlabel('$\Delta$x [arcsec]')
         plt.ylabel('$\Delta$y [arcsec]')
         plt.gca().set_aspect(1.0)
@@ -349,7 +512,8 @@ def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
     x = asec2rad(np.arange(x0-win, x0+win+res, res))
     y = asec2rad(np.arange(y0-win, y0+win+res, res))
     
-    (z0s_grid, alphas_grid, xx_grid, yy_grid) = np.meshgrid(z0s, alphas, x, y) # search grid
+    #(z0s_grid, alphas_grid, xx_grid, yy_grid) = np.meshgrid(z0s, alphas, x, y) # search grid
+    (z0s_grid, alphas_grid, xx_grid, yy_grid) = meshgrid_lmtscripts(z0s, alphas, x, y) # search grid
     zr = z0s_grid.ravel()
     ar = alphas_grid.ravel()
     xr = xx_grid.ravel()
@@ -498,7 +662,8 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     # compute the x and y coordinates that we are computing the maps over
     x = asec2rad(np.arange(-win, win+res, res))
     y = asec2rad(np.arange(-win, win+res, res))
-    (xx, yy) = np.meshgrid(x, y) # search grid
+    #(xx, yy) = np.meshgrid(x, y) # search grid
+    (xx, yy) = meshgrid_lmtscripts(x, y) # search grid
     xr = xx.ravel()
     yr = yy.ravel()
     
@@ -593,7 +758,8 @@ def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_d
     scaling = 10
     x = asec2rad(np.arange(x0-scaling*disk_radius, x0+scaling*disk_radius+res, res))
     y = asec2rad(np.arange(y0-scaling*disk_radius, y0+scaling*disk_radius+res, res))
-    (xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
+    #(xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
+    (xx_disk, yy_disk) = meshgrid_lmtscripts(x, y) # search grid
     disk = np.zeros(xx_disk.shape)
     disk[ (xx_disk**2 + yy_disk**2) <= asec2rad(disk_radius)**2 ] = 1.
     
