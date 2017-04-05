@@ -18,6 +18,9 @@ from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
 from scipy.optimize import fmin
 
+#pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
+pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
+
 def asec2rad(asec):
 	return asec * 2*np.pi / 3600. / 360.
 
@@ -244,7 +247,7 @@ def extract(nc):
  
 def rawopen(iobs):
     from scipy.io import netcdf
-    filename = glob('../data_lmt/2017/vlbi1mm_*%06d*.nc' % iobs)[-1]
+    filename = glob(pathname % iobs)[-1]
     nc = netcdf.netcdf_file(filename)
     # keep = dict((name.split('.')[-1], val.data) for (name, val) in nc.variables.items()
     #			if name[:4] == 'Data')
