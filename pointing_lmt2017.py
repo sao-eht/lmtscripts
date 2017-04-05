@@ -678,12 +678,9 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b', disk_diameter=0.
         
         # compute the ideal model in the time domain
         if disk_diameter>0:
-            modelpad[:N] = model_disk(z.x, z.y, x0=xtest, y0=ytest, fwhm=fwhm, disk_diameter=disk_diameter, res=2.0)
+            modelpad[:N] = model_disk(z.x, z.y, x0=xtest, y0=ytest, fwhm=fwhm, disk_diameter=disk_diameter, res=disk_diameter/8.)
         else:
             modelpad[:N] = model(z.x, z.y, x0=xtest, y0=ytest, fwhm=fwhm) # model signal
-
-        if count == 0:
-            plt.figure(); plt.plot(modelpad)
         
         # convert the ideal model to the frequency domain and whiten
         model_rfft = np.fft.rfft(modelpad) 
