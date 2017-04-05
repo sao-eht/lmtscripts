@@ -344,8 +344,20 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
     # get the prob of a each location in the map being the point source and rename the variables
     out = fitmodel_lmt2017(z, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
     (xxa, yya, snr, v, prob, pcum) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
- 
     
+    ############## compute statistics #############
+    
+    indices_3sigma = (pcum.ravel() < 0.99730020393673979)
+    voltages_3sigma = v.ravel()[indices_3sigma]
+    prob_3sigma = prob.ravel()[indices_3sigma]
+
+    # compute the expected value of the source voltage within 3 sigma
+    sourcevoltage_expvalue = np.sum(voltages_3sigma * prob_3sigma) / np.sum(prob_3sigma) # expectation value of v3s
+        
+    # compute the variance of the source voltage within 3 sigma
+    voltage_squareddiff = (voltages_3sigma - sourcevoltage_expvalue)**2
+    sourcevoltage_stdev = np.sqrt(np.sum(voltage_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
+ 
     ############## plotting #############
     if plot:
         plt.figure()
@@ -361,7 +373,9 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
         (xmax, ymax) = (xxa.ravel()[imax], yya.ravel()[imax])
         plt.plot(xmax, ymax, 'y+', ms=11, mew=2)
         plt.text(-0.99*win-res/2, 0.98*win+res/2, '[%.1f, %.1f]"' % (xmax, ymax), va='top', ha='left', color='black')
+        plt.text(.99*win+res/2, .98*win+res/2, '[%.1f $\pm$ %.1f mV]' % (sourcevoltage_expvalue, sourcevoltage_stdev), va='top', ha='right', color='black')
 
+        
         plt.title(z.source.strip() + '     scans:' + str(scans[0]) + '-' + str(scans[-1]))
         plt.xlabel('$\Delta$x [arcsec]')
         plt.ylabel('$\Delta$y [arcsec]')
@@ -405,10 +419,10 @@ def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., 
         
         # compute the variance of the source voltage within 3 sigma
         voltage_squareddiff = (voltages_3sigma - sourcevoltage_expvalue)**2
-        sourcevoltage_variance = np.sqrt(np.sum(voltage_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
+        sourcevoltage_stdev = np.sqrt(np.sum(voltage_squareddiff * prob_3sigma) / np.sum(prob_3sigma)) # std
  
         vmeans.append(sourcevoltage_expvalue)
-        vstds.append(sourcevoltage_variance)
+        vstds.append(sourcevoltage_stdev)
     
     plt.figure(); plt.errorbar(z_position, vmeans, yerr=vstds)
     
@@ -786,6 +800,11 @@ def model_disk(xpos, ypos, x0=0, y0=0, fwhm=11., disk_diameter=0., res=2.):
     #interpfunc = scipy.interpolate.RectBivariateSpline(xx_disk.flatten(), yy_disk.flatten(), blurred_disk.flatten())
     interpfunc = scipy.interpolate.RectBivariateSpline(y, x, blurred_disk)
     model = interpfunc(ypos, xpos,  grid=False)
+    
+    #plt.figure()
+    #plt.axis(aspect=1.0)
+    #plt.imshow(blurred_disk, extent=(rad2asec(min(x)), rad2asec(max(x)), rad2asec(min(y)), rad2asec(max(y))), interpolation='nearest', origin='lower', cmap='afmhot_r')
+    #plt.plot(rad2asec(xpos), rad2asec(ypos), '-', color='violet', ls='--', lw=1.5, alpha=0.75)
     
     return model
 
