@@ -120,8 +120,11 @@ class R2ClockIs256MHz(unittest.TestCase):
         b=roach2.read_uint('sys_clkcounter')
         time.sleep(0.1)
         c=roach2.read_uint('sys_clkcounter')
+        time.sleep(1.0)
+        d=roach2.read_uint('sys_clkcounter')
         clk = (c-2*b+a)/1e5
-        self.assertTrue(abs(clk - 256.) < 2.0, "Check 10 MHz and 2048 clock synth [%.2f]" % clk)
+        # temporary extra diagnostic for this test
+        self.assertTrue(abs(clk - 256.) < 2.0, "Check 10 MHz and 2048 clock synth [%.2f] %d %d %d %d" % (clk, a, b, c, d))
 
 class IFPowerIsGood(unittest.TestCase):
     def test(self):
