@@ -143,7 +143,7 @@ class SwitchIsSetToIF(unittest.TestCase):
 
 class Mark6SoftwareIsCurrent(unittest.TestCase):
     def test(self):
-        self.assertTrue(os.path.exists('/usr/local/src/Mark6_%s' % m6_software_version), "Install new Mark6 software")
+        self.assertTrue(os.path.exists('/usr/local/src/Mark6_%s' % m6_software_version), "nstall new Mark6 software")
 
 class TimezoneIsUTC(unittest.TestCase):
     def test(self):
@@ -176,11 +176,11 @@ class SASDisksAreAllMounted(unittest.TestCase):
         nmount = open('/proc/mounts').read().count('/mnt/disks/')
         self.assertTrue(nmount == 64, "Found %d mount points not 32 (data+meta)")
 
-class EnoughSpaceFor6hrs(unittest.TestCase):
+class EnoughSpaceFor10hrs(unittest.TestCase):
     def test(self):
         rtime = cplanecmd('rtime?32000;') # 32000 Mbps
         rtimesec = float(rtime.split(':')[4])
-        self.assertTrue(rtimesec >= 6*3600, "only %.1f hours left on modules!" % (rtimesec/3600.))
+        self.assertTrue(rtimesec >= 10*3600, "only %.1f hours left on modules!" % (rtimesec/3600.))
 
 class cplaneIsRunningAndUnder1GB(unittest.TestCase):
     def test(self):
@@ -197,7 +197,7 @@ class dplaneIsRunning(unittest.TestCase):
 class dplaneIsReadyToRecord(unittest.TestCase):
     def test(self):
         ret = cplanecmd('status?;')
-        self.assertEqual(ret, '!status?0:0:0x3333301;')
+        self.assertTrue(ret == '!status?0:0:0x3333301;' or ret == '!status?0:0:0x3333311;')
 
 # will only check them as defined by cplane not dplane
 class InputStreamsAreCorrect(unittest.TestCase):
@@ -222,6 +222,8 @@ class R2PPSNearSystemClock(unittest.TestCase):
 class LastScanCheckOK(unittest.TestCase):
     def test(self):
         sc = cplanecmd('scan_check?;')
+        if 'unk' in sc:
+            raise ValueError('cplane confused about last scan, perhaps record pending: ' + sc)
         self.assertTrue('OK' in sc)
         
 if __name__ == '__main__':
