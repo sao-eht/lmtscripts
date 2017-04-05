@@ -18,8 +18,8 @@ from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
 from scipy.optimize import fmin
 
-#pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
-pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
+pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
+#pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
 
 def asec2rad(asec):
 	return asec * 2*np.pi / 3600. / 360.
@@ -323,17 +323,17 @@ def mfilt(scans):
 ################### POINTING & FOCUSING ###################
 
 
-def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
     
     if last is None:
         last = first
     scans = range(first, last+1)
     
-    out = pointing_lmt2017_wrapper(scans, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
+    out = pointing_lmt2017_wrapper(scans, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
     
     return out
 
-def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
     
     ############## pointing #############
 
@@ -342,7 +342,7 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
         
     # get the prob of a each location in the map being the point source and rename the variables
-    out = fitmodel_lmt2017(z, win=win, res=res, fwhm=fwhm, channel=channel)
+    out = fitmodel_lmt2017(z, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
     (xxa, yya, snr, v, prob, pcum) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
  
     
@@ -639,7 +639,7 @@ def whiten_measurements(z, pad_psd, channel='b'):
     return whiteningfac
     
 
-def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
+def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b', disk_diameter=0.):
     
     Fs = z.fs
     #extract the detrended voltage measurements
@@ -671,12 +671,19 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
     yr = yy.ravel()
     
     
+    count = 0; 
     snrs = [] # signal-to-noise ratios
     norms = [] # sqrt of whitened matched filter signal power
     for (xtest, ytest) in zip(xr, yr):
         
         # compute the ideal model in the time domain
-        modelpad[:N] = model(z.x, z.y, xtest, ytest, fwhm=fwhm) # model signal
+        if disk_diameter>0:
+            modelpad[:N] = model_disk(z.x, z.y, x0=xtest, y0=ytest, fwhm=fwhm, disk_diameter=disk_diameter, res=2.0)
+        else:
+            modelpad[:N] = model(z.x, z.y, x0=xtest, y0=ytest, fwhm=fwhm) # model signal
+
+        if count == 0:
+            plt.figure(); plt.plot(modelpad)
         
         # convert the ideal model to the frequency domain and whiten
         model_rfft = np.fft.rfft(modelpad) 
@@ -687,6 +694,8 @@ def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b'):
         norms.append(norm)
         
         snrs.append(np.sum((model_rfft_white * meas_rfft_conj_white).real) / norm)
+        
+        count = count + 1
         
         
     snr = np.array(snrs)
@@ -753,18 +762,49 @@ def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
         count = count + 1
         
     return models
+
+
+def model_disk(xpos, ypos, x0=0, y0=0, fwhm=11., disk_diameter=0., res=2.):
+    
+    fwhm2stdev_factor = 1/2.335
+    
+    sigma = asec2rad(fwhm) * fwhm2stdev_factor 
+    res_rad = asec2rad(res)       
+    sigma_pixels = sigma/res_rad
+
+    # generate a disk image at radian positions xx and yy
+    disk_radius = asec2rad(disk_diameter)/2.
+    
+    
+    x = (np.arange(x0-disk_radius-3*sigma, x0+disk_radius+3*sigma+res_rad, res_rad))
+    y = (np.arange(y0-disk_radius-3*sigma, y0+disk_radius+3*sigma+res_rad, res_rad))
+    
+    #(xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
+    (xx_disk, yy_disk) = meshgrid_lmtscripts(x, y) # search grid
+    disk = np.zeros(xx_disk.shape)
+    disk[ ((xx_disk-x0 )**2 + (yy_disk- y0)**2) <= disk_radius**2 ] = 1.
+    
+    blurred_disk = scipy.ndimage.filters.gaussian_filter(disk, sigma_pixels, mode='constant', cval=0.0)
+
+    #interpfunc = scipy.interpolate.RectBivariateSpline(xx_disk.flatten(), yy_disk.flatten(), blurred_disk.flatten())
+    interpfunc = scipy.interpolate.RectBivariateSpline(y, x, blurred_disk)
+    model = interpfunc(ypos, xpos,  grid=False)
+    
+    return model
+
     
 def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_diameter=0., res=2.):
     
     # generate a disk image at radian positions xx and yy
-    disk_radius = disk_diameter/2.
+    disk_radius = asec2rad(disk_diameter)/2.
     scaling = 10
-    x = asec2rad(np.arange(x0-scaling*disk_radius, x0+scaling*disk_radius+res, res))
-    y = asec2rad(np.arange(y0-scaling*disk_radius, y0+scaling*disk_radius+res, res))
+    res_rad = asec2rad(res)  
+    x = (np.arange(x0-scaling*disk_radius, x0+scaling*disk_radius+res_rad, res_rad))
+    y = (np.arange(y0-scaling*disk_radius, y0+scaling*disk_radius+res_rad, res_rad))
     #(xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
     (xx_disk, yy_disk) = meshgrid_lmtscripts(x, y) # search grid
     disk = np.zeros(xx_disk.shape)
-    disk[ (xx_disk**2 + yy_disk**2) <= asec2rad(disk_radius)**2 ] = 1.
+    disk[ ((xx_disk-x0)**2 + (yy_disk-y0)**2) <= (disk_radius)**2 ] = 1.
     
     
     fwhm2stdev_factor = 1/2.335
