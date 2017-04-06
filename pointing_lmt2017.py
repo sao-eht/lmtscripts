@@ -18,8 +18,8 @@ from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
 from scipy.optimize import fmin
 
-pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
-#pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
+#pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
+pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
 
 def asec2rad(asec):
 	return asec * 2*np.pi / 3600. / 360.
@@ -29,13 +29,13 @@ def rad2asec(rad):
 
 ###################
 
-def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20., disk_diameter=0.):
     
     plt.close('all')
     
     if point:
         print 'pointing'
-        out = pointing_lmt2017(first, last=last, plot=plot, win=win_pointing, res=res, fwhm=fwhm, channel=channel)
+        out = pointing_lmt2017(first, last=last, plot=plot, win=win_pointing, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
         imax = np.argmax(out.snr.ravel())
         (xmax, ymax) = (out.xx.ravel()[imax], out.yy.ravel()[imax])
     else:
@@ -43,13 +43,12 @@ def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5.
         ymax = 0.
 
     scans = range(first, last+1)
-    print scans
-    focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
+    focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch, disk_diameter=disk_diameter)
     
 
-def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20.):
+def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20., disk_diameter=0.):
     
-    focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel)
+    focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel, disk_diameter=disk_diameter)
     focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
     
     
@@ -393,7 +392,7 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
     return out
 
         
-def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b'):
+def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
 
           
     vmeans = []
@@ -404,7 +403,7 @@ def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., 
         
         z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
 
-        out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel)
+        out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
 
 # KATIE: DOESN'T THIS ONLY WORK IF YOU ONLY HAVE 1 PEAK???
@@ -482,8 +481,6 @@ def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., 
     
 def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
-    print 'warning! recomputing N for each scan'
-    
     all_scans = mfilt(scans)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(all_scans.x))))
@@ -492,6 +489,20 @@ def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
     xpos = []
     ypos = []
     meas_whitened = []
+    N_s = []
+
+    for scan_num in scans:
+        scan = mfilt(range(scan_num,scan_num+1))
+        meas = scan.__dict__[channel]
+        N_s.append(len(scan.t))
+    
+    
+    maxN = np.max(N_s)
+    
+    # compute pad length for efficient FFTs
+    pad = 2**int(np.ceil(np.log2(maxN))) 
+        
+
     for scan_num in scans:
         
         scan = mfilt(range(scan_num,scan_num+1))
@@ -501,9 +512,7 @@ def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
 
         # original sequence length
         N = len(scan.t) 
-        # compute pad length for efficient FFTs
-        pad = 2**int(np.ceil(np.log2(N))) 
-        
+
         if scan_num == scans[0]:
             whiteningfac = whiten_measurements(all_scans, pad, channel=channel)
     
@@ -748,11 +757,12 @@ def detrend(x, ntaper=100):
  
  
 def model(x, y, x0=0, y0=0, fwhm=11.):
-	fwhm = asec2rad(fwhm)
-	sigma = fwhm / 2.335
-	# predicted counts
-	m = np.exp(-((x-x0)**2 + (y-y0)**2) / (2*sigma**2))
-	return m
+    fwhm = asec2rad(fwhm)
+    sigma = fwhm / 2.335
+    # predicted counts
+    m = np.exp(-((x-x0)**2 + (y-y0)**2) / (2*sigma**2))
+
+    return m
 
 
 
@@ -771,7 +781,7 @@ def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
         m_z = amplitude_z * np.exp(-((xpos[count]-x0)**2 + (ypos[count]-y0)**2) / (2*sigma_z**2))
         models.append(m_z)
         count = count + 1
-        
+    
     return models
 
 
@@ -793,14 +803,20 @@ def model_disk(xpos, ypos, x0=0, y0=0, fwhm=11., disk_diameter=0., res=2.):
     #(xx_disk, yy_disk) = np.meshgrid(x, y) # search grid
     (xx_disk, yy_disk) = meshgrid_lmtscripts(x, y) # search grid
     disk = np.zeros(xx_disk.shape)
-    disk[ ((xx_disk-x0 )**2 + (yy_disk- y0)**2) <= disk_radius**2 ] = 1.
+    disk[ ((xx_disk-x0 )**2 + (yy_disk- y0)**2) <= disk_radius**2 ] = 1. #1./(np.pi*disk_radius**2)
+    #disk = disk/np.sum(np.sum(disk))
     
     blurred_disk = scipy.ndimage.filters.gaussian_filter(disk, sigma_pixels, mode='constant', cval=0.0)
+    #blurred_disk = blurred_disk*( np.sqrt(2*np.pi) * (sigma)**2 )
+    
+    #blurred_disk = blurred_disk/np.sum(np.sum(blurred_disk))
+    
 
     #interpfunc = scipy.interpolate.RectBivariateSpline(xx_disk.flatten(), yy_disk.flatten(), blurred_disk.flatten())
     interpfunc = scipy.interpolate.RectBivariateSpline(y, x, blurred_disk)
     model = interpfunc(ypos, xpos,  grid=False)
     
+    #plt.figure(); plt.plot(model)
     #plt.figure()
     #plt.axis(aspect=1.0)
     #plt.imshow(blurred_disk, extent=(rad2asec(min(x)), rad2asec(max(x)), rad2asec(min(y)), rad2asec(max(y))), interpolation='nearest', origin='lower', cmap='afmhot_r')
@@ -846,4 +862,93 @@ def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_d
     
     #plt.figure(); plt.imshow(blurred_disk)
     return models
+
+def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='b', plot=True):
+    
+    if last is None:
+        last = first
+    scans = range(first, last+1)
+    
+    z = mfilt(scans)
+    meas = z.__dict__[channel]
+        
+    # compute the x and y coordinates that we are computing the maps over
+    x = asec2rad(np.arange(-win, win+res, res))
+    y = asec2rad(np.arange(-win, win+res, res))
+    #(xx, yy) = np.meshgrid(x, y) # search grid
+    (xx, yy) = meshgrid_lmtscripts(x, y) # search grid
+    
+
+    gridded = scipy.interpolate.griddata(np.array([z.x[:-1], z.y[:-1]]).T , meas[:-1], (xx, yy), method='linear', fill_value=0.)
+    
+    imax = np.argmax(gridded.ravel())
+    (xmax, ymax) = (xx.ravel()[imax], yy.ravel()[imax])
+    peakval = (gridded.ravel()[imax])
+
+    if plot: 
+        plt.figure()
+        plt.clf()
+    
+        plt.axis(aspect=1.0)
+        plt.imshow(gridded, extent=(-win-res/2., win+res/2., -win-res/2., win+res/2.), interpolation='nearest', origin='lower', cmap='afmhot_r')
+        plt.plot(rad2asec(z.x), rad2asec(z.y), '-', color='violet', ls='--', lw=1.5, alpha=0.75)
+
+        plt.text(-0.99*win-res/2, 0.98*win+res/2, '[%.1f, %.1f]"' % (rad2asec(xmax), rad2asec(ymax)), va='top', ha='left', color='black')
+        plt.text(.99*win+res/2, .98*win+res/2, '[%.1f mV]' % (peakval*1e3), va='top', ha='right', color='black')
+    
+        
+        plt.title(z.source.strip() + '     scan:' + str(scans[0]) + '-' + str(scans[-1]) )
+        plt.xlabel('$\Delta$x [arcsec]')
+        plt.ylabel('$\Delta$y [arcsec]')
+        plt.gca().set_aspect(1.0)
+ 
+        plt.gca().set_axis_bgcolor('white')
+        plt.grid(alpha=0.5)
+        plt.ylim(-win-res/2, win+res/2)
+        plt.xlim(-win-res/2, win+res/2)
+    
+        plt.tight_layout()
+
+    return peakval, xmax, ymax
+    
+    
+def focus_origMap(first, last=None, win=50., res=2., fwhm=11., channel='b', plot=True):
+    
+    if last is None:
+        last = first
+    scans = range(first, last+1)
+    
+    vmeans = []
+    vstds = []
+    z_position = []
+
+    for scan in scans:
+        
+        z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
+
+        peakval, xmax, ymax = gridPower(scan, last=None, win=win, res=res, fwhm=fwhm, channel=channel, plot=plot)
+        vmeans.append(peakval)
+        
+    plt.figure(); plt.plot(z_position, vmeans)
+    
+    
+    vmean_fit_flipped, stats = np.polynomial.polynomial.polyfit(np.array(z_position), np.array(vmeans), 2, rcond=None, full=True)
+    vmean_fit = vmean_fit_flipped[::-1]
+    
+    p = np.poly1d(vmean_fit)
+    znews = np.linspace(np.min(z_position), np.max(z_position),100)
+    pnews = p(znews)
+    plt.plot(znews, pnews) 
+    
+    imax = np.argmax(pnews)
+    z0 = znews[imax]
+
+    print 'estimated z0'
+    print z0
+
+    plt.text(min(znews), min(pnews), '[peak $\mathbf{z}$: %.3f]' % (z0), va='top', ha='left', color='black')
+    plt.title('Focusing')
+    plt.xlabel('$\mathbf{z}$')
+    plt.ylabel('amplitude')     
+    return
 
