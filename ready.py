@@ -184,7 +184,7 @@ class SASDisksAreAllMounted(unittest.TestCase):
 
 class EnoughSpaceFor10hrs(unittest.TestCase):
     def test(self):
-        rtime = cplanecmd('rtime?32000;') # 32000 Mbps
+        rtime = cplanecmd('rtime?16000;') # 16000 Mbps
         rtimesec = float(rtime.split(':')[4])
         self.assertTrue(rtimesec >= 10*3600, "only %.1f hours left on modules!" % (rtimesec/3600.))
 
