@@ -127,7 +127,7 @@ class R2ClockIs256MHz(unittest.TestCase):
             c += 2**32
         clk = (c-2*b+a)/2e5
         # temporary extra diagnostic for this test
-        self.assertTrue(abs(clk - 256.) < 2.0, "Check 10 MHz and 2048 clock synth [%.2f]" % clk)
+        self.assertTrue(abs(clk - 256.) < 4.0, "Check 10 MHz and 2048 clock synth [%.2f]" % clk)
 
 class IFPowerIsGood(unittest.TestCase):
     def test(self):
