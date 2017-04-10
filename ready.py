@@ -47,7 +47,7 @@ input_streams = {'eth3':'12', 'eth5':'34'} # input streams we will test for
 switch_ip = get_switch_ip()
 m6_software_version = '1.2j'
 r2_bitcode_md5sum = '6421249e83aa86a9f2630b2c2ea04d22'
-if_power_tol = 10 # deviation of std from ideal in ADC 8bit units
+if_power_tol = 12 # deviation of std from ideal in ADC 8bit units
 r2_threshold_tol = 4 # deviation of th from ideal in ADC 8bit units
 vv_threshold = 0.05 # seconds offset after which to warn for vv packet vs system time
 ntp_threshold = 0.05 # seconds offset after which to warn about NTP offset size
@@ -123,21 +123,21 @@ class R2ClockIs256MHz(unittest.TestCase):
     def test(self):
         a=roach2.read_uint('sys_clkcounter')
         b=roach2.read_uint('sys_clkcounter')
-        time.sleep(0.2)
+        time.sleep(0.5)
         c=roach2.read_uint('sys_clkcounter')
         if c < b:
             c += 2**32
         if b < a:
             b += 2**32
             c += 2**32
-        clk = (c-2*b+a)/2e5
+        clk = (c-2*b+a)/5e5
         # temporary extra diagnostic for this test
-        self.assertTrue(abs(clk - 256.) < 4.0, "Check 10 MHz and 2048 clock synth [%.2f]" % clk)
+        self.assertTrue(abs(clk - 256.) < 10.0, "Check 10 MHz and 2048 clock synth [%.2f]" % clk)
 
 class IFPowerIsGood(unittest.TestCase):
     def test(self):
-        self.assertTrue(np.abs(np.std(x0) - 30.) <= if_power_tol and
-                np.abs(np.std(x1) - 30.) <= if_power_tol, "Verify IF power and BDC attenuators")
+        self.assertTrue(np.abs(np.std(x0) - 35.) <= if_power_tol and
+                np.abs(np.std(x1) - 35.) <= if_power_tol, "Verify IF power and BDC attenuators")
 
 class IFThresholdIsGood(unittest.TestCase):
     def test(self):
@@ -233,8 +233,9 @@ class R2PPSNearSystemClock(unittest.TestCase):
 class LastScanCheckOK(unittest.TestCase):
     def test(self):
         if "pending" in recstate: # if pending look at previous completed scan
-            sc = cplanecmd('scan_check?%d;' % int(recstate.split(':')[3])-1)
-        sc = cplanecmd('scan_check?;')
+            sc = cplanecmd('scan_check?%d;' % (int(recstate.split(':')[3])-1))
+        else:
+            sc = cplanecmd('scan_check?;')
         if 'unk' in sc:
             raise ValueError('cplane confused about last scan, perhaps record pending: ' + sc)
         self.assertTrue('OK' in sc)
