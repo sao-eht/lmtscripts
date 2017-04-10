@@ -11,6 +11,8 @@
 #   DONE: modules are in a group? - assume this is covered by the other tests
 #   DONE: (dplane state check) group=open was done before input_stream ? (i.e. input streams armable)
 #   DONE: mark6 interrupts in /etc/default/mark6
+#   thermal check? other kernel errors? demsg -> CPU3: Temperature above threshold, cpu clock throttled (total events = 1595)
+#   eth3 and eth5 are UP? tcpdump check? dropped packet statistics?
 
 # vv test is impossible right now:
 # oper@Mark6-4047:~$ sudo /home/oper/bin/vv -i eth3 -p 4001 -n 5
@@ -62,6 +64,9 @@ def cplanecmd(cmd):
     s.close()
     return ret
 
+recstate = cplanecmd('record?;')
+if "recording" in recstate:
+    sys.exit('currently recording do not run!')
 roach2 = corr.katcp_wrapper.FpgaClient(r2_hostname)
 roach2.wait_connected()
 x0 = np.array(adc5g.get_snapshot(roach2, 'r2dbe_snap_8bit_0_data'))
@@ -145,7 +150,7 @@ class SwitchIsSetToIF(unittest.TestCase):
         connection.request("GET","/SWPORT?")
         response = connection.getresponse()
         data = response.read()
-        self.assertEqual(int(data), 0, "Run switch_set_IF.py")
+        self.assertEqual(int(data), 0, "Run switch_set_IF.py before recording VLBI")
 
 class Mark6SoftwareIsCurrent(unittest.TestCase):
     def test(self):
@@ -227,6 +232,8 @@ class R2PPSNearSystemClock(unittest.TestCase):
 
 class LastScanCheckOK(unittest.TestCase):
     def test(self):
+        if "pending" in recstate: # if pending look at previous completed scan
+            sc = cplanecmd('scan_check?%d;' % int(recstate.split(':')[3])-1)
         sc = cplanecmd('scan_check?;')
         if 'unk' in sc:
             raise ValueError('cplane confused about last scan, perhaps record pending: ' + sc)
