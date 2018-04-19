@@ -281,8 +281,6 @@ def rawopen(iobs):
     keep.BPower = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
     keep.nc = nc
     
-    
-    print 'WARNING: REDO THIS KATIE!!!'
     if 'Data.IfProc.BasebandTime' in nc.variables:
         keep.ADCTime = nc.variables['Data.IfProc.BasebandTime'].data
     return keep
@@ -892,7 +890,6 @@ def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_d
 
 def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', plot=True):
         
-    print 'hi'
     if last is None:
         last = first
     scans = range(first, last+1)
