@@ -18,9 +18,7 @@ from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
 from scipy.optimize import fmin
 
-#pathname = '../data_lmt/2017/vlbi1mm_*%06d*.nc'
-#pathname = '/data_lmt/vlbi1mm/vlbi1mm_*%06d*.nc'
-pathname = '../../obsfiles/ifproc_2018-04-18_%06d_01_0000.nc'
+pathname = '../obsfiles/ifproc_2018-04-18_%06d_01_0000.nc'
 
 def asec2rad(asec):
 	return asec * 2*np.pi / 3600. / 360.
@@ -203,9 +201,9 @@ def meshgrid_lmtscripts(*xi, **kwargs):
 
 # extract 1mm total power data and fix some timing jitter issues
 def extract(nc):
-	t0 = nc.variables['Data.IfProc.BasebandTime'].data[0]
+	t0 = nc.variables['Data.TelescopeBackend.TelTime'].data[0]
 	print t0
-	t = nc.variables['Data.IfProc.BasebandTime'].data - t0
+	t = nc.variables['Data.TelescopeBackend.TelTime'].data - t0
 	a = nc.variables['Data.IfProc.BasebandLevel'].data[:,0]
 	b = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
 	x = nc.variables['Data.TelescopeBackend.TelAzMap'].data
@@ -215,14 +213,14 @@ def extract(nc):
 	iobs = nc.variables['Header.Dcs.ObsNum'].data
 	if iobs >= 70000: # move to 50 Hz sampling to avoid ADC time glitches
 		fs = (1./np.mean(np.diff(t)))
-		tnew = nc.variables['Data.IfProc.BasebandTime'].data - nc.variables['Data.IfProc.BasebandTime'].data[0]
+		tnew = nc.variables['Data.TelescopeBackend.TelTime'].data - nc.variables['Data.TelescopeBackend.TelTime'].data[0]
 		idx = tnew <= t[-1]
 		a = a[idx]
 		b = b[idx]
 		tnew = tnew[idx]
 	elif iobs >= 39150: # move to 50 Hz sampling to avoid ADC time glitches
 		fs = 50.
-		tnew = nc.variables['Data.IfProc.BasebandTime'].data - nc.variables['Data.IfProc.BasebandTime'].data[0]
+		tnew = nc.variables['Data.TelescopeBackend.TelTime'].data - nc.variables['Data.TelescopeBackend.TelTime'].data[0]
 		idx = tnew <= t[-1]
 		a = a[idx]
 		b = b[idx]
@@ -230,7 +228,7 @@ def extract(nc):
 	elif iobs >= 38983: # kamal includes gap times
 		tnew = np.linspace(0, t[-1], len(t))
 		fs = 1./(t[1]-t[0])
-		adctime = nc.variables['Data.IfProc.BasebandTime'].data - nc.variables['Data.IfProc.BasebandTime'].data[0]
+		adctime = nc.variables['Data.TelescopeBackend.TelTime'].data - nc.variables['Data.TelescopeBackend.TelTime'].data[0]
 		tnew = np.linspace(0, adctime[-1], len(adctime))
 		tnew = tnew[(tnew <= t[-1])]
 		a = interp1d(adctime, a)(tnew)
@@ -276,16 +274,17 @@ def rawopen(iobs):
     #keep.BPower = nc.variables['Data.Vlbi1mmTpm.BPower'].data
     
     keep.BufPos = nc.variables['Data.TelescopeBackend.BufPos'].data
-    keep.Time = nc.variables['Data.IfProc.BasebandTime'].data
+    keep.Time = nc.variables['Data.TelescopeBackend.TelTime'].data
     keep.XPos = nc.variables['Data.TelescopeBackend.TelAzMap'].data
     keep.YPos = nc.variables['Data.TelescopeBackend.TelElMap'].data
     keep.APower = nc.variables['Data.IfProc.BasebandLevel'].data[:,0]
     keep.BPower = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
     keep.nc = nc
     
+    
     print 'WARNING: REDO THIS KATIE!!!'
-    if 'Data.Vlbi1mmTpm.Time' in nc.variables:
-        keep.ADCTime = nc.variables['Data.Vlbi1mmTpm.Time'].data
+    if 'Data.IfProc.BasebandTime' in nc.variables:
+        keep.ADCTime = nc.variables['Data.IfProc.BasebandTime'].data
     return keep
   
 # patch together many scans and try to align in time (to the sample -- to keep X and Y)
@@ -350,17 +349,17 @@ def mfilt(scans):
 ################### POINTING & FOCUSING ###################
 
 
-def pointing_lmt2017(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
     
     if last is None:
         last = first
     scans = range(first, last+1)
     
-    out = pointing_lmt2017_wrapper(scans, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
+    out = pointing_lmt2018_wrapper(scans, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
     
     return out
 
-def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
     
     ############## pointing #############
 
@@ -369,7 +368,7 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
         
     # get the prob of a each location in the map being the point source and rename the variables
-    out = fitmodel_lmt2017(z, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
+    out = fitmodel_lmt2018(z, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
     (xxa, yya, snr, v, prob, pcum) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
     
     ############## compute statistics #############
@@ -420,7 +419,7 @@ def pointing_lmt2017_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
     return out
 
         
-def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
 
           
     vmeans = []
@@ -431,7 +430,7 @@ def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., 
         
         z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
 
-        out = pointing_lmt2017(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
+        out = pointing_lmt2018(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
 
 # KATIE: DOESN'T THIS ONLY WORK IF YOU ONLY HAVE 1 PEAK???
@@ -507,7 +506,7 @@ def focusing_parabolicfit_lmt2017(scans, plot=True, win=10., res=0.5, fwhm=11., 
 
     
     
-def focusing_matchfilter_lmt2017(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
+def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
     all_scans = mfilt(scans)
     if win is None:
@@ -690,7 +689,7 @@ def whiten_measurements(z, pad_psd, channel='b'):
     return whiteningfac
     
 
-def fitmodel_lmt2017(z, win=50., res=2., fwhm=11., channel='b', disk_diameter=0.):
+def fitmodel_lmt2018(z, win=50., res=2., fwhm=11., channel='b', disk_diameter=0.):
     
     Fs = z.fs
     #extract the detrended voltage measurements
