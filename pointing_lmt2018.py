@@ -28,7 +28,7 @@ def rad2asec(rad):
 
 ###################
 
-def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20., disk_diameter=0.):
+def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='all_chan', z0search=20., alphasearch=20., disk_diameter=0.):
     
     plt.close('all')
     
@@ -45,7 +45,7 @@ def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5.
     focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch, disk_diameter=disk_diameter)
     
 
-def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='b', z0search=20., alphasearch=20., disk_diameter=0.):
+def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='all_chan', z0search=20., alphasearch=20., disk_diameter=0.):
     
     focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel, disk_diameter=disk_diameter)
     focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
@@ -251,7 +251,7 @@ def extract(nc):
 	t = tnew
 	#iobs = nc.hdu.header.ObsNum[0]
 	source = ''.join(nc.variables['Header.Source.SourceName'])
-	return Namespace(t0=t0, t=t, a=a, b=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
+	return Namespace(t0=t0, t=t, single_chan=a, all_chan=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
 
  
 def rawopen(iobs):
@@ -301,8 +301,8 @@ def mfilt(scans):
     for i in sorted(scans):
         keep = rawopen(i)
         scan = extract(keep.nc)
-        aps.append(detrend(scan.a, ntaper=ntaper))
-        bps.append(detrend(scan.b, ntaper=ntaper))
+        aps.append(detrend(scan.single_chan, ntaper=ntaper))
+        bps.append(detrend(scan.all_chan, ntaper=ntaper))
         ts.append(scan.t + scan.t0)
         xs.append(scan.x)
         ys.append(scan.y)
@@ -342,14 +342,14 @@ def mfilt(scans):
 
     
     fillfrac = float(np.sum(idx)-ntaper*len(scans)) / len(tnew)
-    return Namespace(t=tnew, a=a, b=b, x=x, y=y, z=zs, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
+    return Namespace(t=tnew, single_chan=a, all_chan=b, x=x, y=y, z=zs, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
 
  
 
 ################### POINTING & FOCUSING ###################
 
 
-def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
     
     if last is None:
         last = first
@@ -359,7 +359,7 @@ def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     
     return out
 
-def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
     
     ############## pointing #############
 
@@ -419,7 +419,7 @@ def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
     return out
 
         
-def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., channel='b', disk_diameter=0.):
+def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
 
           
     vmeans = []
@@ -506,7 +506,7 @@ def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., 
 
     
     
-def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='b', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
+def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='all_chan', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
     all_scans = mfilt(scans)
     if win is None:
@@ -582,9 +582,9 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
         #print count/len(zr)
         
         if disk_diameter > 0:
-            models = focus_model_disk(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest, disk_diameter=disk_diameter, res=0.2)
+            models = focus_model_disk(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alphsingle_chan=atest, disk_diameter=disk_diameter, res=0.2)
         else:
-            models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest)
+            models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alphsingle_chan=atest)
         
         
         snr =  0.0
@@ -664,7 +664,7 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
     
 
     
-def whiten_measurements(z, pad_psd, channel='b'):
+def whiten_measurements(z, pad_psd, channel='all_chan'):
     
     Fs = z.fs
     #extract the detrended voltage measurements
@@ -689,7 +689,7 @@ def whiten_measurements(z, pad_psd, channel='b'):
     return whiteningfac
     
 
-def fitmodel_lmt2018(z, win=50., res=2., fwhm=11., channel='b', disk_diameter=0.):
+def fitmodel_lmt2018(z, win=50., res=2., fwhm=11., channel='all_chan', disk_diameter=0.):
     
     Fs = z.fs
     #extract the detrended voltage measurements
@@ -890,8 +890,9 @@ def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_d
     #plt.figure(); plt.imshow(blurred_disk)
     return models
 
-def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='b', plot=True):
+def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', plot=True):
         
+    print 'hi'
     if last is None:
         last = first
     scans = range(first, last+1)
@@ -938,7 +939,7 @@ def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='b', plot=Tru
     return peakval, xmax, ymax
     
     
-def focus_origMap(first, last=None, win=50., res=2., fwhm=11., channel='b', plot=True):
+def focus_origMap(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', plot=True):
     
     if last is None:
         last = first
