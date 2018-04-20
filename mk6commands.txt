@@ -1,0 +1,20 @@
+# look for ARP traffic
+tcpdump -nnti eth3 arp or icmp -c 1
+
+# check traffic on 10G
+tcpdump -i eth3 -c 1
+
+# check packet timestamp vs system clock
+/home/oper/bin/vv -i eth3 -p 4001
+
+# look at extended packet header with scan_check
+scan_check -v -c"exthdr=type:000000" file.vdif
+
+# check ntp sync
+ntpq -p
+
+# restart service on control computer
+systemctl restart dnsmasq
+
+# review system log on control computer
+journalctl -b | grep dnsmasq
