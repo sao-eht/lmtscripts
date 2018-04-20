@@ -2,7 +2,7 @@
 vex2xml.py -f e18c21.vex -s Lm
 
 # run schedule on mark6
-nohup 2>&1 M6_CC -f e18c21.vex &
+nohup 2>&1 M6_CC -f e18c21.xml &
 
 # look for ARP traffic
 tcpdump -nnti eth3 arp or icmp -c 1
