@@ -18,7 +18,12 @@ from matplotlib.mlab import griddata, psd
 from datetime import datetime, timedelta
 from scipy.optimize import fmin
 
-pathname = '../obsfiles/ifproc_2018-04-18_%06d_01_0000.nc'
+#pathname_12bit = '../obsfiles/ifproc_2018-04-21_%06d_01_0000.nc'
+#pathname_16bit = '../obsfiles/lmttpm_2018-04-21_%06d_01_0000.nc'
+
+pathname_12bit = '../obsfiles/ifproc_2018-*-*_%06d_01_0000.nc'
+pathname_16bit = '../obsfiles/lmttpm_2018-*-*_%06d_01_0000.nc'
+
 
 def asec2rad(asec):
 	return asec * 2*np.pi / 3600. / 360.
@@ -28,7 +33,7 @@ def rad2asec(rad):
 
 ###################
 
-def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=11., channel='all_chan', z0search=20., alphasearch=20., disk_diameter=0.):
+def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5., res=2., fwhm=7., channel='tp12bit', z0search=20., alphasearch=20., disk_diameter=0.):
     
     plt.close('all')
     
@@ -45,7 +50,7 @@ def focus(first, last, plot=False, point=False, win_pointing=5., win_focusing=5.
     focus_subset(scans, x0=xmax, y0=ymax, plot=plot, win_pointing=win_pointing, win_focusing=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch, disk_diameter=disk_diameter)
     
 
-def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=11., channel='all_chan', z0search=20., alphasearch=20., disk_diameter=0.):
+def focus_subset(scans, x0=0., y0=0., plot=False, win_pointing=50., win_focusing=5., res=2., fwhm=7., channel='tp12bit', z0search=20., alphasearch=20., disk_diameter=0.):
     
     focusing_parabolicfit_lmt2017(scans, plot=plot, win=win_pointing, channel=channel, disk_diameter=disk_diameter)
     focusing_matchfilter_lmt2017(scans, x0=x0, y0=y0, win=win_focusing, res=res, fwhm=fwhm, channel=channel, z0search=z0search, alphasearch=alphasearch)
@@ -202,10 +207,19 @@ def meshgrid_lmtscripts(*xi, **kwargs):
 # extract 1mm total power data and fix some timing jitter issues
 def extract(nc):
 	t0 = nc.variables['Data.TelescopeBackend.TelTime'].data[0]
-	print t0
 	t = nc.variables['Data.TelescopeBackend.TelTime'].data - t0
-	a = nc.variables['Data.IfProc.BasebandLevel'].data[:,0]
-	b = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
+	
+	try:
+	    a = -nc.variables['Data.LmtTpm.Signal'].data[:,0]
+	    b = a
+	except:
+	    print("Using 12 bit signal")
+	try:
+	    b = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
+	    a = b
+	except:
+	    print("Using 16 bit signal")
+	    
 	x = nc.variables['Data.TelescopeBackend.TelAzMap'].data
 	y = nc.variables['Data.TelescopeBackend.TelElMap'].data
 	
@@ -251,34 +265,34 @@ def extract(nc):
 	t = tnew
 	#iobs = nc.hdu.header.ObsNum[0]
 	source = ''.join(nc.variables['Header.Source.SourceName'])
-	return Namespace(t0=t0, t=t, single_chan=a, all_chan=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
+	return Namespace(t0=t0, t=t, tp16bit=a, tp12bit=b, x=x, y=y, i=i, iobs=iobs, source=source, fs=fs)
 
  
-def rawopen(iobs):
+def rawopen(iobs, channel='tp12bit'):
     from scipy.io import netcdf
-    filename = glob(pathname % iobs)[-1]
+    
+    if channel=='tp12bit':
+        filename = glob(pathname_12bit % iobs)[-1]
+    elif channel=='tp16bit':
+        filename = glob(pathname_16bit % iobs)[-1]
+    else:
+        print('ERROR: you can only specify tp12bit or tp16bit for the channel')
+        
     nc = netcdf.netcdf_file(filename)
-
-    
-    # keep = dict((name.split('.')[-1], val.data) for (name, val) in nc.variables.items()
-    #			if name[:4] == 'Data')
     keep = Namespace()
-    
-    
-    
-    #keep.BufPos = nc.variables['Data.Dcs.BufPos'].data
-    #keep.Time = nc.variables['Data.Sky.Time'].data
-    #keep.XPos = nc.variables['Data.Sky.XPos'].data
-    #keep.YPos = nc.variables['Data.Sky.YPos'].data
-    #keep.APower = nc.variables['Data.Vlbi1mmTpm.APower'].data
-    #keep.BPower = nc.variables['Data.Vlbi1mmTpm.BPower'].data
-    
+
     keep.BufPos = nc.variables['Data.TelescopeBackend.BufPos'].data
     keep.Time = nc.variables['Data.TelescopeBackend.TelTime'].data
     keep.XPos = nc.variables['Data.TelescopeBackend.TelAzMap'].data
     keep.YPos = nc.variables['Data.TelescopeBackend.TelElMap'].data
-    keep.APower = nc.variables['Data.IfProc.BasebandLevel'].data[:,0]
-    keep.BPower = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
+    
+    if channel=='tp16bit':
+        keep.APower = -nc.variables['Data.LmtTpm.Signal'].data[:,0]
+        keep.BPower = keep.APower
+    elif channel=='tp12bit':
+        keep.BPower = np.sum(nc.variables['Data.IfProc.BasebandLevel'].data, axis=1) / nc.variables['Data.IfProc.BasebandLevel'].data.shape[1]
+        keep.APower = keep.BPower
+
     keep.nc = nc
     
     if 'Data.IfProc.BasebandTime' in nc.variables:
@@ -286,7 +300,7 @@ def rawopen(iobs):
     return keep
   
 # patch together many scans and try to align in time (to the sample -- to keep X and Y)
-def mfilt(scans):
+def mfilt(scans, channel='tp12bit'):
     aps = []
     bps = []
     xs = []
@@ -297,10 +311,10 @@ def mfilt(scans):
     zs = []
     ntaper = 100
     for i in sorted(scans):
-        keep = rawopen(i)
+        keep = rawopen(i, channel=channel)
         scan = extract(keep.nc)
-        aps.append(detrend(scan.single_chan, ntaper=ntaper))
-        bps.append(detrend(scan.all_chan, ntaper=ntaper))
+        aps.append(detrend(scan.tp16bit, ntaper=ntaper))
+        bps.append(detrend(scan.tp12bit, ntaper=ntaper))
         ts.append(scan.t + scan.t0)
         xs.append(scan.x)
         ys.append(scan.y)
@@ -340,14 +354,14 @@ def mfilt(scans):
 
     
     fillfrac = float(np.sum(idx)-ntaper*len(scans)) / len(tnew)
-    return Namespace(t=tnew, single_chan=a, all_chan=b, x=x, y=y, z=zs, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
+    return Namespace(t=tnew, tp16bit=a, tp12bit=b, x=x, y=y, z=zs, idx=idx, source=s, fs=fs, fillfrac=fillfrac)
 
  
 
 ################### POINTING & FOCUSING ###################
 
 
-def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
+def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=7., channel='tp12bit', disk_diameter=0.):
     
     if last is None:
         last = first
@@ -357,11 +371,11 @@ def pointing_lmt2018(first, last=None, plot=True, win=10., res=0.5, fwhm=11., ch
     
     return out
 
-def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
+def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=7., channel='tp12bit', disk_diameter=0.):
     
     ############## pointing #############
 
-    z = mfilt(scans)
+    z = mfilt(scans, channel)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(z.x))))
         
@@ -417,7 +431,7 @@ def pointing_lmt2018_wrapper(scans, plot=True, win=10., res=0.5, fwhm=11., chann
     return out
 
         
-def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., channel='all_chan', disk_diameter=0.):
+def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=7., channel='tp12bit', disk_diameter=0.):
 
           
     vmeans = []
@@ -426,7 +440,7 @@ def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., 
 
     for scan in scans:
         
-        z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
+        z_position.append(rawopen(scan, channel).nc.variables['Header.M2.ZReq'].data)
 
         out = pointing_lmt2018(scan, plot=plot, win=win, res=res, fwhm=fwhm, channel=channel, disk_diameter=disk_diameter)
         (xxa, yya, snr, v, prob, cumulative_prob) = (out.xx, out.yy, out.snr, out.v, out.prob, out.pcum)
@@ -504,9 +518,9 @@ def focusing_parabolicfit_lmt2018(scans, plot=True, win=10., res=0.5, fwhm=11., 
 
     
     
-def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., channel='all_chan', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
+def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=7., channel='tp12bit', alpha_min=0., alpha_max=20., disk_diameter=0., z0search=20., alphasearch=20., plot=True):
     
-    all_scans = mfilt(scans)
+    all_scans = mfilt(scans, channel)
     if win is None:
         win = np.ceil(rad2asec(np.abs(np.min(all_scans.x))))
     
@@ -517,7 +531,7 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
     N_s = []
 
     for scan_num in scans:
-        scan = mfilt(range(scan_num,scan_num+1))
+        scan = mfilt(range(scan_num,scan_num+1), channel)
         meas = scan.__dict__[channel]
         N_s.append(len(scan.t))
     
@@ -530,7 +544,7 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
 
     for scan_num in scans:
         
-        scan = mfilt(range(scan_num,scan_num+1))
+        scan = mfilt(range(scan_num,scan_num+1),channel)
         
         # place the measurements into meas_pad so that its padded to be of a power 2 length
         meas = scan.__dict__[channel]
@@ -580,9 +594,9 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
         #print count/len(zr)
         
         if disk_diameter > 0:
-            models = focus_model_disk(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alphsingle_chan=atest, disk_diameter=disk_diameter, res=0.2)
+            models = focus_model_disk(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest, disk_diameter=disk_diameter, res=0.2)
         else:
-            models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alphsingle_chan=atest)
+            models = focus_model(xpos, ypos, zpos, x0=xtest, y0=ytest, fwhm=fwhm, z0=ztest, alpha=atest)
         
         
         snr =  0.0
@@ -662,7 +676,7 @@ def focusing_matchfilter_lmt2018(scans, x0=0, y0=0, win=50., res=2., fwhm=11., c
     
 
     
-def whiten_measurements(z, pad_psd, channel='all_chan'):
+def whiten_measurements(z, pad_psd, channel='tp12bit'):
     
     Fs = z.fs
     #extract the detrended voltage measurements
@@ -687,7 +701,7 @@ def whiten_measurements(z, pad_psd, channel='all_chan'):
     return whiteningfac
     
 
-def fitmodel_lmt2018(z, win=50., res=2., fwhm=11., channel='all_chan', disk_diameter=0.):
+def fitmodel_lmt2018(z, win=50., res=2., fwhm=7., channel='tp12bit', disk_diameter=0.):
     
     Fs = z.fs
     #extract the detrended voltage measurements
@@ -781,7 +795,7 @@ def detrend(x, ntaper=100):
 	return x2
  
  
-def model(x, y, x0=0, y0=0, fwhm=11.):
+def model(x, y, x0=0, y0=0, fwhm=7.):
     fwhm = asec2rad(fwhm)
     sigma = fwhm / 2.335
     # predicted counts
@@ -791,7 +805,7 @@ def model(x, y, x0=0, y0=0, fwhm=11.):
 
 
 
-def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
+def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=7., z0=0, alpha=0):
     
     fwhm2stdev_factor = 1/2.335
     
@@ -810,7 +824,7 @@ def focus_model(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0):
     return models
 
 
-def model_disk(xpos, ypos, x0=0, y0=0, fwhm=11., disk_diameter=0., res=2.):
+def model_disk(xpos, ypos, x0=0, y0=0, fwhm=7., disk_diameter=0., res=2.):
     
     fwhm2stdev_factor = 1/2.335
     
@@ -850,7 +864,7 @@ def model_disk(xpos, ypos, x0=0, y0=0, fwhm=11., disk_diameter=0., res=2.):
     return model
 
     
-def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_diameter=0., res=2.):
+def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=7., z0=0, alpha=0, disk_diameter=0., res=2.):
     
     # generate a disk image at radian positions xx and yy
     disk_radius = asec2rad(disk_diameter)/2.
@@ -888,13 +902,13 @@ def focus_model_disk(xpos, ypos, zs, x0=0, y0=0, fwhm=11., z0=0, alpha=0, disk_d
     #plt.figure(); plt.imshow(blurred_disk)
     return models
 
-def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', plot=True):
+def gridPower(first, last=None, win=50., res=2., fwhm=7., channel='tp12bit', plot=True):
         
     if last is None:
         last = first
     scans = range(first, last+1)
     
-    z = mfilt(scans)
+    z = mfilt(scans, channel)
     meas = z.__dict__[channel]
         
     # compute the x and y coordinates that we are computing the maps over
@@ -936,7 +950,7 @@ def gridPower(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', p
     return peakval, xmax, ymax
     
     
-def focus_origMap(first, last=None, win=50., res=2., fwhm=11., channel='all_chan', plot=True):
+def focus_origMap(first, last=None, win=50., res=2., fwhm=7., channel='tp12bit', plot=True):
     
     if last is None:
         last = first
@@ -948,7 +962,7 @@ def focus_origMap(first, last=None, win=50., res=2., fwhm=11., channel='all_chan
 
     for scan in scans:
         
-        z_position.append(rawopen(scan).nc.variables['Header.M2.ZReq'].data)
+        z_position.append(rawopen(scan, channel).nc.variables['Header.M2.ZReq'].data)
 
         peakval, xmax, ymax = gridPower(scan, last=None, win=win, res=res, fwhm=fwhm, channel=channel, plot=plot)
         vmeans.append(peakval)
