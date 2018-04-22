@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 # monitor for EHT observations
-# based on Helge's start_eht script
+# run from control computer
+# inspired by Helge's start_eht script
 # 2018.04.22 LLB
 
 import sys
