@@ -11,9 +11,18 @@ from subprocess import check_output
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from time import sleep
+import glob
+
+schedules = sorted(glob.glob('e?????.xml'), key=lambda x: x[-6:])
+if len(schedules) > 0:
+    lastxml = schedules[-1]
+    nargs = '?'
+else:
+    lastxml = None
+    nargs = 1
 
 parser = argparse.ArgumentParser()
-parser.add_argument('xml_schedule', help='xml schedule (from vex2xml)')
+parser.add_argument('schedule', nargs=nargs, help='xml schedule (from vex2xml)', default=lastxml)
 parser.add_argument('-a', '--alc', help='do alc before scan', action='store_true', default=False)
 parser.add_argument('-p', '--pre', help='time before scan to do alc.py', default=5.)
 args = parser.parse_args()
@@ -21,7 +30,7 @@ args = parser.parse_args()
 r2dbes = ['r2dbe1', 'r2dbe2', 'r2dbe3', 'r2dbe4']
 alc = "/home/oper/bin/alc.py"
 
-tree = ET.parse(args.xml_schedule)
+tree = ET.parse(args.schedule)
 root = tree.getroot()
 wipe = 30 * '\b' + 30 * ' ' + 30 * '\b'
 
