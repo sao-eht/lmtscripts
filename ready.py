@@ -46,7 +46,7 @@ def get_switch_ip():
     code = open("/usr/local/src/r2dbe/software/switch_set_IF.py").read()
     return code.split('"')[1]
 
-recorder = {'Mark6-4042':'1', 'Mark6-4080':'2', 'Mark6-4106':'3', 'Mark6-4107':'4'}
+recorder = {'Mark6-4042':'1', 'Mark6-4024':'2', 'Mark6-4106':'3', 'Mark6-4107':'4'}
 mark6name = open('/etc/hostname').read().strip()
 r2_hostname = 'r2dbe' + recorder[mark6name]
 input_streams = {'eth3':'12', 'eth5':'34'} # input streams we will test for
