@@ -1,3 +1,6 @@
+# look at fill rate by scan
+ssh recorder4 "cat /var/log/mark6/dplane-daemon.log | grep 'packets good' | grep -v 'packets good 0   fill 0'"
+
 # vex to xml schedule
 vex2xml.py -f e18c21.vex -s Lm
 
